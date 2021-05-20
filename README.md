@@ -13,5 +13,5 @@ to your dependencies in your build.gradle file, then you can edit your run confi
 ``` 
 to the program arguments.  
 
-If you don't like putting your password in such a vulnerable place and don't mind not being able to log onto servers or just simply wish to pretend to be some famous YouTuber or Mojang employee or whatever, you can also add `--mimicPlayer <PlayerName or UUID>` instead.   
-Both methods work more or less the same, the latter just doesn't actually login so you cannot join online servers.
+If you don't like putting your password in such a vulnerable place and don't mind not being able to log onto servers or just simply wish to pretend to be some famous YouTuber or Mojang employee or whatever, you can add `--mimicPlayer <PlayerName or UUID>` instead.   
+Both methods yield more or less the same results, the latter just doesn't actually login so you cannot join online servers.
