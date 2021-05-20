@@ -1,0 +1,27 @@
+{
+  "schemaVersion": 1,
+  "id": "devlogin",
+  "version": "${version}",
+  "name": "DevLogin",
+  "description": "A simple mod that allows developers to login with their own Minecraft account in a Fabric mod development environment.",
+  "authors": [
+    "PlanetTeamSpeak"
+  ],
+  "contact": {
+    "homepage": "https://fabricmc.net/",
+    "sources": "https://github.com/FabricMC/fabric-example-mod"
+  },
+  "license": "MIT",
+  "environment": "client",
+  "mixins": [
+    "devlogin.mixins.json"
+  ],
+  "depends": {
+    "fabricloader": ">=0.7.4"
+  },
+  "custom": {
+    "modmenu": {
+      "badges": ["library"]
+    }
+  }
+}

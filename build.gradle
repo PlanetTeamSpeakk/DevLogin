@@ -1,0 +1,97 @@
+plugins {
+	id 'fabric-loom' version '0.8-SNAPSHOT'
+	id 'maven-publish'
+	id 'signing'
+}
+
+sourceCompatibility = JavaVersion.VERSION_1_8
+targetCompatibility = JavaVersion.VERSION_1_8
+
+archivesBaseName = project.archives_base_name
+version = project.mod_version
+group = project.maven_group
+
+dependencies {
+	minecraft "com.mojang:minecraft:${project.minecraft_version}"
+	mappings "net.fabricmc:yarn:${project.yarn_mappings}:v2"
+	modImplementation "net.fabricmc:fabric-loader:${project.loader_version}"
+}
+
+processResources {
+	inputs.property "version", project.version
+
+	filesMatching("fabric.mod.json") {
+		expand "version": project.version
+	}
+}
+
+tasks.withType(JavaCompile).configureEach {
+	it.options.encoding = "UTF-8"
+	def targetVersion = 8
+	if (JavaVersion.current().isJava9Compatible())
+		 it.options.release = targetVersion
+}
+
+java {
+	withSourcesJar()
+	withJavadocJar()
+}
+
+// configure the maven publication
+publishing {
+	publications {
+		mavenJava(MavenPublication) {
+			pom {
+				name = 'DevLogin'
+				artifactId = 'devlogin'
+				description = 'Login with your own Minecraft account in a Fabric mod development environment.'
+				url = 'https://github.com/PlanetTeamSpeakk/DevLogin'
+				licenses {
+					license {
+						name = 'MIT License'
+						url = 'https://raw.githubusercontent.com/PlanetTeamSpeakk/DevLogin/main/LICENSE'
+					}
+				}
+				developers {
+					developer {
+						id = 'PlanetTeamSpeak'
+						name = 'PlanetTeamSpeak'
+						email = 'PlanetTeamSpeakk@users.noreply.github.com'
+					}
+				}
+				scm {
+					connection = 'scm:git:git://github.com/PlanetTeamSpeakk/DevLogin.git'
+					developerConnection = 'scm:git:git://github.com/PlanetTeamSpeakk/DevLogin.git'
+					url = 'https://github.com/PlanetTeamSpeakk/DevLogin'
+				}
+			}
+			// add all the jars that should be included when publishing to maven
+			artifact(javadocJar) {
+				builtBy javadocJar
+			}
+			artifact(jar) {
+				builtBy jar
+			}
+			artifact(remapJar) {
+				builtBy remapJar
+			}
+			artifact(sourcesJar) {
+				builtBy remapSourcesJar
+			}
+		}
+	}
+
+	repositories {
+		maven {
+			url "https://oss.sonatype.org/service/local/staging/deploy/maven2/"
+			credentials {
+				username project.ossrhUsername
+				password project.ossrhPassword
+			}
+		}
+	}
+}
+
+signing {
+	sign publishing.publications.mavenJava
+}
