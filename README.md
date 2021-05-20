@@ -1,5 +1,6 @@
 # DevLogin
-Login with your own Minecraft account in a Fabric mod development environment.
+Login with your own Minecraft account in a Fabric mod development environment.  
+This works on all Minecraft versions supported by Fabric, ranging from 1.14 to the latest snapshot.
 
 ## Usage
 To use this mod, add 
