@@ -9,15 +9,11 @@ import com.mojang.authlib.yggdrasil.YggdrasilAuthenticationService;
 import com.mojang.util.UUIDTypeAdapter;
 import joptsimple.*;
 import net.minecraft.client.main.Main;
-import net.minecraft.util.Util;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Unique;
-import org.spongepowered.asm.mixin.injection.At;
-import org.spongepowered.asm.mixin.injection.Inject;
-import org.spongepowered.asm.mixin.injection.ModifyArgs;
-import org.spongepowered.asm.mixin.injection.Redirect;
+import org.spongepowered.asm.mixin.injection.*;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 import org.spongepowered.asm.mixin.injection.callback.LocalCapture;
 import org.spongepowered.asm.mixin.injection.invoke.arg.Args;
@@ -27,7 +23,6 @@ import java.io.IOException;
 import java.io.InputStreamReader;
 import java.net.Proxy;
 import java.net.URL;
-import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -41,18 +36,7 @@ public class MixinMain {
     @Unique private static OptionSpec<String> usernameSpec, passwordSpec, mimicPlayer;
     @Unique private static OptionSet optionSet;
     @Unique private static final Logger LOG = LogManager.getLogger("DevLogin");
-
-    /**
-     * Add the password and mimicPlayer optionspecs to the parser.
-     * @param args The args Minecraft was launched with (many added by Fabric).
-     * @param info The CallbackInfo required for Injects.
-     * @param parser The OptionParser used to parse the args.
-     */
-    @Inject(at = @At(value = "INVOKE", target = "Ljoptsimple/OptionParser;nonOptions()Ljoptsimple/NonOptionArgumentSpec;", remap = false), method = "main", locals = LocalCapture.CAPTURE_FAILHARD)
-    private static void addSpecs(String[] args, CallbackInfo info, OptionParser parser) {
-        passwordSpec = parser.accepts("password").withRequiredArg();
-        mimicPlayer = parser.accepts("mimicPlayer").withRequiredArg();
-    }
+    @Unique private static Proxy proxy = Proxy.NO_PROXY;
 
     /**
      * Redirects all {@link OptionSpecBuilder#withRequiredArg()} calls to check if the
@@ -65,6 +49,29 @@ public class MixinMain {
         ArgumentAcceptingOptionSpec<String> spec = builder.withRequiredArg();
         if (builder.options().contains("username")) usernameSpec = spec;
         return spec;
+    }
+
+    /**
+     * Adds the password and mimicPlayer optionspecs to the parser.
+     * @param args The args Minecraft was launched with (many added by Fabric).
+     * @param info The CallbackInfo required for Injects.
+     * @param parser The OptionParser used to parse the args.
+     */
+    @Inject(at = @At(value = "INVOKE", target = "Ljoptsimple/OptionParser;nonOptions()Ljoptsimple/NonOptionArgumentSpec;", remap = false), method = "main", locals = LocalCapture.CAPTURE_FAILHARD)
+    private static void addSpecs(String[] args, CallbackInfo info, OptionParser parser) {
+        passwordSpec = parser.accepts("password").withRequiredArg();
+        mimicPlayer = parser.accepts("mimicPlayer").withRequiredArg();
+    }
+
+    /**
+     * Store the proxy for later use when making a new {@link net.minecraft.client.util.Session}
+     * if one is required.
+     * @param proxy0 The proxy to use.
+     * @return The same proxy, but now it's stored in a field.
+     */
+    @ModifyVariable(at = @At("STORE"), method = "main")
+    private static Proxy storeProxy(Proxy proxy0) {
+        return proxy = proxy0;
     }
 
     /**
@@ -127,7 +134,7 @@ public class MixinMain {
     @ModifyArgs(at = @At(value = "INVOKE", target = "Lnet/minecraft/client/util/Session;<init>(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)V"), method = "main")
     private static void modifySessionArgs(Args args) {
         if (optionSet.has(usernameSpec) && optionSet.has(passwordSpec)) {
-            UserAuthentication auth = new YggdrasilAuthenticationService(Proxy.NO_PROXY, UUID.randomUUID().toString()).createUserAuthentication(Agent.MINECRAFT);
+            UserAuthentication auth = new YggdrasilAuthenticationService(proxy, UUID.randomUUID().toString()).createUserAuthentication(Agent.MINECRAFT);
             auth.setUsername(optionSet.valueOf(usernameSpec));
             auth.setPassword(optionSet.valueOf(passwordSpec));
 

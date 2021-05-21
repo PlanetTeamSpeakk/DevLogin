@@ -89,6 +89,13 @@ publishing {
 				password project.ossrhPassword
 			}
 		}
+		maven {
+			url "https://maven.pkg.github.com/PlanetTeamSpeakk/DevLogin"
+			credentials {
+				username project.ghUsername
+				password project.ghToken
+			}
+		}
 	}
 }
 
