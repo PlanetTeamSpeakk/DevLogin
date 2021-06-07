@@ -1,5 +1,6 @@
 package com.ptsmods.devlogin.mixin;
 
+import com.google.common.base.MoreObjects;
 import com.google.common.collect.Lists;
 import com.google.gson.Gson;
 import com.mojang.authlib.Agent;
@@ -9,6 +10,7 @@ import com.mojang.authlib.yggdrasil.YggdrasilAuthenticationService;
 import com.mojang.util.UUIDTypeAdapter;
 import joptsimple.*;
 import net.minecraft.client.main.Main;
+import net.minecraft.util.Util;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.spongepowered.asm.mixin.Mixin;
@@ -85,6 +87,7 @@ public class MixinMain {
      */
     @Redirect(at = @At(value = "INVOKE", target = "Ljoptsimple/OptionParser;parse([Ljava/lang/String;)Ljoptsimple/OptionSet;", remap = false), method = "main")
     private static OptionSet getOptionsSet(OptionParser optionParser, String[] arguments) {
+        if (usernameSpec == null) usernameSpec = optionParser.accepts("username").withRequiredArg().defaultsTo("Player" + Util.getMeasuringTimeNano() % 1000); // Just in case it wasn't found.
         optionSet = optionParser.parse(arguments);
         if (optionSet.has(mimicPlayer)) {
             UUID id;
@@ -92,7 +95,7 @@ public class MixinMain {
                 id = UUIDTypeAdapter.fromString(optionSet.valueOf(mimicPlayer).replace("-", ""));
             } catch (Exception e) {
                 try {
-                    id = UUIDTypeAdapter.fromString((String) new Gson().fromJson(new BufferedReader(new InputStreamReader(new URL("https://api.mojang.com/users/profiles/minecraft/" + optionSet.valueOf(mimicPlayer)).openStream())), Map.class).get("id"));
+                    id = UUIDTypeAdapter.fromString((String) new Gson().fromJson(new BufferedReader(new InputStreamReader(new URL("https://api.mojang.com/users/profiles/minecraft/" + optionSet.valueOf(mimicPlayer)).openConnection(proxy).getInputStream())), Map.class).get("id"));
                 } catch (IOException e0) {
                     LOG.error("Could not find player to mimic, an error occurred.", e);
                     return optionSet;
@@ -104,22 +107,20 @@ public class MixinMain {
 
             Map<?, ?> data;
             try {
-                data = new Gson().fromJson(new BufferedReader(new InputStreamReader(new URL("https://sessionserver.mojang.com/session/minecraft/profile/" + UUIDTypeAdapter.fromUUID(id) + "?unsigned=false").openStream())), Map.class);
+                data = new Gson().fromJson(new BufferedReader(new InputStreamReader(new URL("https://sessionserver.mojang.com/session/minecraft/profile/" + UUIDTypeAdapter.fromUUID(id) + "?unsigned=false").openConnection(proxy).getInputStream())), Map.class);
             } catch (IOException e) {
                 LOG.error("Could not get data of the given player.");
                 return optionSet;
             }
 
             String username = (String) data.get("name");
-            List<?> properties = (List<?>) data.get("properties");
-
             List<String> argsList = Lists.newArrayList(arguments);
             argsList.add("--username");
             argsList.add(username);
             argsList.add("--uuid");
             argsList.add(id.toString());
             argsList.add("--profileProperties");
-            argsList.add('"' + new Gson().toJson(properties).replace("\"", "\\\"") + '"');
+            argsList.add('"' + new Gson().toJson(data.get("properties")).replace("\"", "\\\"") + '"');
 
             LOG.info("Mimicking player " + username);
             optionSet = optionParser.parse(argsList.toArray(new String[0]));
@@ -133,14 +134,14 @@ public class MixinMain {
      */
     @ModifyArgs(at = @At(value = "INVOKE", target = "Lnet/minecraft/client/util/Session;<init>(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)V"), method = "main")
     private static void modifySessionArgs(Args args) {
-        if (optionSet.has(usernameSpec) && optionSet.has(passwordSpec)) {
+        if ((optionSet.has(usernameSpec) && optionSet.has(passwordSpec) || System.getenv().containsKey("MinecraftUsername") && System.getenv().containsKey("MinecraftPassword")) && !optionSet.has(mimicPlayer)) {
             UserAuthentication auth = new YggdrasilAuthenticationService(proxy, UUID.randomUUID().toString()).createUserAuthentication(Agent.MINECRAFT);
-            auth.setUsername(optionSet.valueOf(usernameSpec));
-            auth.setPassword(optionSet.valueOf(passwordSpec));
+            auth.setUsername(MoreObjects.firstNonNull(optionSet.valueOf(usernameSpec), System.getenv("MinecraftUsername")));
+            auth.setPassword(MoreObjects.firstNonNull(optionSet.valueOf(passwordSpec), System.getenv("MinecraftPassword")));
 
             try {
                 auth.logIn();
-                if (auth.getAvailableProfiles().length == 0) throw new AuthenticationException("No valid gameprofile found for the given account.");
+                if (auth.getAvailableProfiles().length == 0) throw new AuthenticationException("No valid gameprofile was found for the given account.");
             } catch (AuthenticationException e) {
                 LOG.warn("Could not login with the given credentials, are they correct?", e);
                 return;

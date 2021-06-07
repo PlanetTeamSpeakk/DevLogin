@@ -90,7 +90,7 @@ publishing {
 			}
 		}
 		maven {
-			url "https://maven.pkg.github.com/PlanetTeamSpeakk/DevLogin"
+			url "${project.ghUrlRoot}/DevLogin"
 			credentials {
 				username project.ghUsername
 				password project.ghToken
