@@ -1,6 +1,5 @@
 package com.ptsmods.devlogin.mixin;
 
-import com.google.common.base.MoreObjects;
 import com.google.common.collect.Lists;
 import com.google.gson.Gson;
 import com.mojang.authlib.Agent;
@@ -10,6 +9,7 @@ import com.mojang.authlib.yggdrasil.YggdrasilAuthenticationService;
 import com.mojang.util.UUIDTypeAdapter;
 import joptsimple.*;
 import net.minecraft.client.main.Main;
+import net.minecraft.client.util.Session;
 import net.minecraft.util.Util;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -27,6 +27,7 @@ import java.net.Proxy;
 import java.net.URL;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.UUID;
 
 /**
@@ -46,7 +47,7 @@ public class MixinMain {
      * @param builder The {@link OptionSpecBuilder} that requires a required arg.
      * @return The optionspec as a result of the {@link OptionSpecBuilder#withRequiredArg()} call.
      */
-    @Redirect(at = @At(value = "INVOKE", target = "Ljoptsimple/OptionSpecBuilder;withRequiredArg()Ljoptsimple/ArgumentAcceptingOptionSpec;", remap = false), method = "main")
+    @Redirect(at = @At(value = "INVOKE", target = "Ljoptsimple/OptionSpecBuilder;withRequiredArg()Ljoptsimple/ArgumentAcceptingOptionSpec;", remap = false), method = "main", remap = false)
     private static ArgumentAcceptingOptionSpec<String> listenForUsernameSpec(OptionSpecBuilder builder) {
         ArgumentAcceptingOptionSpec<String> spec = builder.withRequiredArg();
         if (builder.options().contains("username")) usernameSpec = spec;
@@ -59,7 +60,7 @@ public class MixinMain {
      * @param info The CallbackInfo required for Injects.
      * @param parser The OptionParser used to parse the args.
      */
-    @Inject(at = @At(value = "INVOKE", target = "Ljoptsimple/OptionParser;nonOptions()Ljoptsimple/NonOptionArgumentSpec;", remap = false), method = "main", locals = LocalCapture.CAPTURE_FAILHARD)
+    @Inject(at = @At(value = "INVOKE", target = "Ljoptsimple/OptionParser;nonOptions()Ljoptsimple/NonOptionArgumentSpec;", remap = false), method = "main", locals = LocalCapture.CAPTURE_FAILHARD, remap = false)
     private static void addSpecs(String[] args, CallbackInfo info, OptionParser parser) {
         passwordSpec = parser.accepts("password").withRequiredArg();
         mimicPlayer = parser.accepts("mimicPlayer").withRequiredArg();
@@ -71,7 +72,7 @@ public class MixinMain {
      * @param proxy0 The proxy to use.
      * @return The same proxy, but now it's stored in a field.
      */
-    @ModifyVariable(at = @At("STORE"), method = "main")
+    @ModifyVariable(at = @At("STORE"), method = "main", remap = false)
     private static Proxy storeProxy(Proxy proxy0) {
         return proxy = proxy0;
     }
@@ -85,7 +86,7 @@ public class MixinMain {
      * @param arguments The arguments to parse.
      * @return The parsed optionset.
      */
-    @Redirect(at = @At(value = "INVOKE", target = "Ljoptsimple/OptionParser;parse([Ljava/lang/String;)Ljoptsimple/OptionSet;", remap = false), method = "main")
+    @Redirect(at = @At(value = "INVOKE", target = "Ljoptsimple/OptionParser;parse([Ljava/lang/String;)Ljoptsimple/OptionSet;", remap = false), method = "main", remap = false)
     private static OptionSet getOptionsSet(OptionParser optionParser, String[] arguments) {
         if (usernameSpec == null) usernameSpec = optionParser.accepts("username").withRequiredArg().defaultsTo("Player" + Util.getMeasuringTimeNano() % 1000); // Just in case it wasn't found.
         optionSet = optionParser.parse(arguments);
@@ -130,14 +131,32 @@ public class MixinMain {
 
     /**
      * Modifies the Session data for if you logged in with your username and password.
+     * For versions older than 1.18 snapshots.
      * @param args The args to modify
      */
-    @ModifyArgs(at = @At(value = "INVOKE", target = "Lnet/minecraft/client/util/Session;<init>(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)V"), method = "main")
-    private static void modifySessionArgs(Args args) {
-        if ((optionSet.has(usernameSpec) && optionSet.has(passwordSpec) || System.getenv().containsKey("MinecraftUsername") && System.getenv().containsKey("MinecraftPassword")) && !optionSet.has(mimicPlayer)) {
+    @Group(name = "modifySessionArgs", min = 1, max = 1)
+    @ModifyArgs(at = @At(value = "INVOKE", target = "Lnet/minecraft/client/util/Session;<init>(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)V"), method = "main", remap = false)
+    private static void modifySessionArgsOld(Args args) {
+        doModifySessionArgs(args, false);
+    }
+
+    /**
+     * Modifies the Session data for if you logged in with your username and password.
+     * For 1.18 snapshots or newer.
+     * @param args The args to modify
+     */
+    @Group(name = "modifySessionArgs", min = 1, max = 1)
+    @ModifyArgs(at = @At(value = "INVOKE", target = "Lnet/minecraft/client/util/Session;<init>(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/util/Optional;Ljava/util/Optional;Lnet/minecraft/client/util/Session$AccountType;)V"), method = "main", remap = false)
+    private static void modifySessionArgsNew(Args args) {
+        doModifySessionArgs(args, true);
+    }
+
+    private static @Unique void doModifySessionArgs(Args args, boolean isNew) {
+        boolean fromSpec = optionSet.has(usernameSpec) && optionSet.has(passwordSpec);
+        if ((fromSpec || System.getenv().containsKey("MinecraftUsername") && System.getenv().containsKey("MinecraftPassword")) && !optionSet.has(mimicPlayer)) {
             UserAuthentication auth = new YggdrasilAuthenticationService(proxy, UUID.randomUUID().toString()).createUserAuthentication(Agent.MINECRAFT);
-            auth.setUsername(MoreObjects.firstNonNull(optionSet.valueOf(usernameSpec), System.getenv("MinecraftUsername")));
-            auth.setPassword(MoreObjects.firstNonNull(optionSet.valueOf(passwordSpec), System.getenv("MinecraftPassword")));
+            auth.setUsername(fromSpec ? optionSet.valueOf(usernameSpec) : System.getenv("MinecraftUsername"));
+            auth.setPassword(fromSpec ? optionSet.valueOf(passwordSpec) : System.getenv("MinecraftPassword"));
 
             try {
                 auth.logIn();
@@ -147,7 +166,8 @@ public class MixinMain {
                 return;
             }
 
-            args.setAll(auth.getSelectedProfile().getName(), UUIDTypeAdapter.fromUUID(auth.getSelectedProfile().getId()), auth.getAuthenticatedToken(), auth.getUserType().getName());
+            if (!isNew) args.setAll(auth.getSelectedProfile().getName(), UUIDTypeAdapter.fromUUID(auth.getSelectedProfile().getId()), auth.getAuthenticatedToken(), auth.getUserType().getName());
+            else args.setAll(auth.getSelectedProfile().getName(), UUIDTypeAdapter.fromUUID(auth.getSelectedProfile().getId()), auth.getAuthenticatedToken(), args.<Optional<String>>get(3), args.<Optional<String>>get(4), Session.AccountType.byName(auth.getUserType().getName()));
         }
     }
 }

@@ -1,5 +1,5 @@
 plugins {
-	id 'fabric-loom' version '0.8-SNAPSHOT'
+	id 'fabric-loom' version '0.10-SNAPSHOT'
 	id 'maven-publish'
 	id 'signing'
 }
@@ -60,9 +60,13 @@ publishing {
 					}
 				}
 				scm {
-					connection = 'scm:git:git://github.com/PlanetTeamSpeakk/DevLogin.git'
-					developerConnection = 'scm:git:git://github.com/PlanetTeamSpeakk/DevLogin.git'
+					connection = 'scm:git:https://github.com/PlanetTeamSpeakk/DevLogin.git'
+					developerConnection = 'scm:git:git@github.com:PlanetTeamSpeakk/DevLogin.git'
 					url = 'https://github.com/PlanetTeamSpeakk/DevLogin'
+				}
+				issueManagement {
+					system = "GitHub"
+					url = "https://github.com/PlanetTeamSpeakk/DevLogin/issues"
 				}
 			}
 			// add all the jars that should be included when publishing to maven
