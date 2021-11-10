@@ -10,9 +10,9 @@ modImplementation "com.ptsmods:devlogin:2.0"
 to your dependencies in your build.gradle file.  
 
 After that, the procedure differs for different account types. You have the following options:
-1. (Mojang account)[#mojang-account]
-2. (Microsoft account)[#microsoft-account]
-3. (Mimicking)[#mimicking]
+1. [Mojang account](#mojang-account)
+2. [Microsoft account](#microsoft-account)
+3. [Mimicking](#mimicking)
 
 ### Mojang account
 If you have a plain old Mojang account, edit your run configuration in your IDE and add 
