@@ -7,6 +7,7 @@ import com.mojang.authlib.UserAuthentication;
 import com.mojang.authlib.exceptions.AuthenticationException;
 import com.mojang.authlib.yggdrasil.YggdrasilAuthenticationService;
 import com.mojang.util.UUIDTypeAdapter;
+import com.ptsmods.devlogin.MSA;
 import joptsimple.*;
 import net.minecraft.client.main.Main;
 import net.minecraft.client.util.Session;
@@ -31,12 +32,13 @@ import java.util.Optional;
 import java.util.UUID;
 
 /**
- * This is where all the magic happens, the only class in the mod as of writing this.
+ * This is where all the magic happens, ~~the only class in the mod as of writing this~~.
+ * Nvm, a class more than twice as big as this one was required for MSA.
  * @author PlanetTeamSpeak
  */
 @Mixin(Main.class)
 public class MixinMain {
-    @Unique private static OptionSpec<String> usernameSpec, passwordSpec, mimicPlayer;
+    @Unique private static OptionSpec<String> usernameSpec, passwordSpec, mimicPlayerSpec;
     @Unique private static OptionSet optionSet;
     @Unique private static final Logger LOG = LogManager.getLogger("DevLogin");
     @Unique private static Proxy proxy = Proxy.NO_PROXY;
@@ -63,18 +65,20 @@ public class MixinMain {
     @Inject(at = @At(value = "INVOKE", target = "Ljoptsimple/OptionParser;nonOptions()Ljoptsimple/NonOptionArgumentSpec;", remap = false), method = "main", locals = LocalCapture.CAPTURE_FAILHARD, remap = false)
     private static void addSpecs(String[] args, CallbackInfo info, OptionParser parser) {
         passwordSpec = parser.accepts("password").withRequiredArg();
-        mimicPlayer = parser.accepts("mimicPlayer").withRequiredArg();
+        mimicPlayerSpec = parser.accepts("mimicPlayer").withRequiredArg();
+        parser.accepts("msa");
+        parser.accepts("msa-nostore");
     }
 
     /**
      * Store the proxy for later use when making a new {@link net.minecraft.client.util.Session}
      * if one is required.
-     * @param proxy0 The proxy to use.
+     * @param theProxy The proxy to use.
      * @return The same proxy, but now it's stored in a field.
      */
     @ModifyVariable(at = @At("STORE"), method = "main", remap = false)
-    private static Proxy storeProxy(Proxy proxy0) {
-        return proxy = proxy0;
+    private static Proxy storeProxy(Proxy theProxy) {
+        return proxy = theProxy;
     }
 
     /**
@@ -90,13 +94,13 @@ public class MixinMain {
     private static OptionSet getOptionsSet(OptionParser optionParser, String[] arguments) {
         if (usernameSpec == null) usernameSpec = optionParser.accepts("username").withRequiredArg().defaultsTo("Player" + Util.getMeasuringTimeNano() % 1000); // Just in case it wasn't found.
         optionSet = optionParser.parse(arguments);
-        if (optionSet.has(mimicPlayer)) {
+        if (optionSet.has(mimicPlayerSpec)) {
             UUID id;
             try {
-                id = UUIDTypeAdapter.fromString(optionSet.valueOf(mimicPlayer).replace("-", ""));
+                id = UUIDTypeAdapter.fromString(optionSet.valueOf(mimicPlayerSpec).replace("-", ""));
             } catch (Exception e) {
                 try {
-                    id = UUIDTypeAdapter.fromString((String) new Gson().fromJson(new BufferedReader(new InputStreamReader(new URL("https://api.mojang.com/users/profiles/minecraft/" + optionSet.valueOf(mimicPlayer)).openConnection(proxy).getInputStream())), Map.class).get("id"));
+                    id = UUIDTypeAdapter.fromString((String) new Gson().fromJson(new BufferedReader(new InputStreamReader(new URL("https://api.mojang.com/users/profiles/minecraft/" + optionSet.valueOf(mimicPlayerSpec)).openConnection(proxy).getInputStream())), Map.class).get("id"));
                 } catch (IOException e0) {
                     LOG.error("Could not find player to mimic, an error occurred.", e);
                     return optionSet;
@@ -153,7 +157,21 @@ public class MixinMain {
 
     private static @Unique void doModifySessionArgs(Args args, boolean isNew) {
         boolean fromSpec = optionSet.has(usernameSpec) && optionSet.has(passwordSpec);
-        if ((fromSpec || System.getenv().containsKey("MinecraftUsername") && System.getenv().containsKey("MinecraftPassword")) && !optionSet.has(mimicPlayer)) {
+        if (optionSet.has("msa") || optionSet.has("msa-nostore")) {
+            try {
+                MSA.login(proxy, optionSet.has("msa"));
+                if (!MSA.isLoggedIn() || MSA.getProfile() == null)
+                    MSA.showDialog("DevLogin MSA Authentication - error", "Either something went wrong or the account you used to login does not own Minecraft.");
+                else {
+                    MSA.MinecraftProfile profile = MSA.getProfile();
+                    if (!isNew) args.setAll(profile.getName(), UUIDTypeAdapter.fromUUID(profile.getUuid()), profile.getToken(), "msa");
+                    else args.setAll(profile.getName(), UUIDTypeAdapter.fromUUID(profile.getUuid()), profile.getToken(), Optional.<String>empty(), Optional.<String>empty(), Session.AccountType.MSA);
+                }
+                MSA.cleanup();
+            } catch (IOException | InterruptedException e) {
+                e.printStackTrace();
+            }
+        } else if ((fromSpec || System.getenv().containsKey("MinecraftUsername") && System.getenv().containsKey("MinecraftPassword")) && !optionSet.has(mimicPlayerSpec)) {
             UserAuthentication auth = new YggdrasilAuthenticationService(proxy, UUID.randomUUID().toString()).createUserAuthentication(Agent.MINECRAFT);
             auth.setUsername(fromSpec ? optionSet.valueOf(usernameSpec) : System.getenv("MinecraftUsername"));
             auth.setPassword(fromSpec ? optionSet.valueOf(passwordSpec) : System.getenv("MinecraftPassword"));
