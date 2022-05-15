@@ -68,6 +68,7 @@ public class MixinMain {
         mimicPlayerSpec = parser.accepts("mimicPlayer").withRequiredArg();
         parser.accepts("msa");
         parser.accepts("msa-nostore");
+		parser.accepts("msa-no-dialog");
     }
 
     /**
@@ -139,9 +140,9 @@ public class MixinMain {
      * @param args The args to modify
      */
     @Group(name = "modifySessionArgs", min = 1, max = 1)
-    @ModifyArgs(at = @At(value = "INVOKE", target = "Lnet/minecraft/client/util/Session;<init>(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)V"), method = "main", remap = false)
+    @ModifyArgs(at = @At(value = "INVOKE", target = "Lnet/minecraft/class_320;<init>(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)V", remap = false), method = "main", remap = false)
     private static void modifySessionArgsOld(Args args) {
-        doModifySessionArgs(args, false);
+        doModifySessionArgs(args, true);
     }
 
     /**
@@ -152,19 +153,22 @@ public class MixinMain {
     @Group(name = "modifySessionArgs", min = 1, max = 1)
     @ModifyArgs(at = @At(value = "INVOKE", target = "Lnet/minecraft/client/util/Session;<init>(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/util/Optional;Ljava/util/Optional;Lnet/minecraft/client/util/Session$AccountType;)V"), method = "main", remap = false)
     private static void modifySessionArgsNew(Args args) {
-        doModifySessionArgs(args, true);
+        doModifySessionArgs(args, false);
     }
 
-    private static @Unique void doModifySessionArgs(Args args, boolean isNew) {
+    private static @Unique void doModifySessionArgs(Args args, boolean legacy) {
         boolean fromSpec = optionSet.has(usernameSpec) && optionSet.has(passwordSpec);
         if (optionSet.has("msa") || optionSet.has("msa-nostore")) {
             try {
-                MSA.login(proxy, optionSet.has("msa"));
-                if (!MSA.isLoggedIn() || MSA.getProfile() == null)
-                    MSA.showDialog("DevLogin MSA Authentication - error", "Either something went wrong or the account you used to login does not own Minecraft.");
-                else {
+				boolean noDialog = optionSet.has("msa-no-dialog");
+                MSA.login(proxy, optionSet.has("msa"), noDialog);
+                if (!MSA.isLoggedIn() || MSA.getProfile() == null) {
+					final String message = "Either something went wrong or the account you used to login does not own Minecraft.";
+					if (noDialog) LOG.error(message);
+					else MSA.showDialog("DevLogin MSA Authentication - error", message);
+				} else {
                     MSA.MinecraftProfile profile = MSA.getProfile();
-                    if (!isNew) args.setAll(profile.getName(), UUIDTypeAdapter.fromUUID(profile.getUuid()), profile.getToken(), "msa");
+                    if (legacy) args.setAll(profile.getName(), UUIDTypeAdapter.fromUUID(profile.getUuid()), profile.getToken(), "msa");
                     else args.setAll(profile.getName(), UUIDTypeAdapter.fromUUID(profile.getUuid()), profile.getToken(), Optional.<String>empty(), Optional.<String>empty(), Session.AccountType.MSA);
                 }
                 MSA.cleanup();
@@ -184,7 +188,7 @@ public class MixinMain {
                 return;
             }
 
-            if (!isNew) args.setAll(auth.getSelectedProfile().getName(), UUIDTypeAdapter.fromUUID(auth.getSelectedProfile().getId()), auth.getAuthenticatedToken(), auth.getUserType().getName());
+            if (!legacy) args.setAll(auth.getSelectedProfile().getName(), UUIDTypeAdapter.fromUUID(auth.getSelectedProfile().getId()), auth.getAuthenticatedToken(), auth.getUserType().getName());
             else args.setAll(auth.getSelectedProfile().getName(), UUIDTypeAdapter.fromUUID(auth.getSelectedProfile().getId()), auth.getAuthenticatedToken(), args.<Optional<String>>get(3), args.<Optional<String>>get(4), Session.AccountType.byName(auth.getUserType().getName()));
         }
     }

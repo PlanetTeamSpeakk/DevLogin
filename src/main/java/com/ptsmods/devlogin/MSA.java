@@ -8,6 +8,7 @@ import com.google.gson.GsonBuilder;
 import com.google.gson.JsonObject;
 import com.mojang.util.UUIDTypeAdapter;
 import it.unimi.dsi.fastutil.booleans.BooleanConsumer;
+import net.minecraft.client.MinecraftClient;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -52,7 +53,7 @@ public class MSA {
      * @throws IOException If anything goes wrong with the requests.
      * @throws InterruptedException If the thread gets interrupted while waiting.
      */
-    public static void login(Proxy proxy, boolean storeRefreshToken) throws IOException, InterruptedException {
+    public static void login(Proxy proxy, boolean storeRefreshToken, boolean noDialog) throws IOException, InterruptedException {
         System.setProperty("java.awt.headless", "false"); // Can't display dialogs otherwise.
         MSA.proxy = proxy;
 
@@ -71,14 +72,14 @@ public class MSA {
                 refreshToken(b -> {
                     if (!b)
                         try {
-                            reqTokens();
+                            reqTokens(noDialog);
                         } catch (IOException ignored) {}
                 });
             } else {
                 LOG.info("Cached token is invalid.");
-                reqTokens();
+                reqTokens(noDialog);
             }
-        } else reqTokens();
+        } else reqTokens(noDialog);
 
         synchronized (waitLock) {
             waitLock.wait();
@@ -115,14 +116,23 @@ public class MSA {
      * Microsoft once the user has authenticated.
      * @throws IOException If anything goes wrong with the request.
      */
-    private static void reqTokens() throws IOException {
+    private static void reqTokens(boolean noDialog) throws IOException {
         doRequest("POST", "https://login.microsoftonline.com/consumers/oauth2/v2.0/devicecode",
                 String.format("client_id=%s&scope=%s", URLEncoder.encode(CLIENT_ID, "UTF-8"), URLEncoder.encode("XboxLive.signin offline_access", "UTF-8")),
                 ImmutableMap.of("Content-Type", "application/x-www-form-urlencoded"), (con, resp) -> {
                     JsonObject respObj = new Gson().fromJson(resp, JsonObject.class);
+
                     deviceCode = respObj.get("device_code").getAsString();
-                    mainDialog = showDialog("DevLogin MSA Authentication", String.format("Please visit <a href=\"%s\">%s</a> and enter the code <b>%s</b>.",
-                            respObj.get("verification_uri").getAsString(), respObj.get("verification_uri").getAsString(), respObj.get("user_code").getAsString()), () -> isCancelled = true);
+					String verificationUri = respObj.get("verification_uri").getAsString();
+					String userCode = respObj.get("user_code").getAsString();
+
+					if (!noDialog) mainDialog = showDialog("DevLogin MSA Authentication", String.format("Please visit <a href=\"%s\">%s</a> and enter the code <b>%s</b>.",
+                            verificationUri, verificationUri, userCode), () -> isCancelled = true);
+					else LOG.info(String.format(
+							"\n-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-" +
+							"\nPlease visit %s and enter code %s." +
+							"\n-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-",
+							verificationUri, userCode));
                     int interval = respObj.get("interval").getAsInt();
                     long expires = System.currentTimeMillis() + respObj.get("expires_in").getAsInt() * 1000L;
 
@@ -164,7 +174,8 @@ public class MSA {
                                 return;
                             } catch (InterruptedException | UnsupportedEncodingException ignored) {}
                     } else {
-                        mainDialog.dispose();
+						if (mainDialog != null) mainDialog.dispose();
+						else LOG.info("Authentication complete, requesting tokens...");
                         accessToken = resp1Obj.get("access_token").getAsString();
                         refreshToken = resp1Obj.get("refresh_token").getAsString();
                     }
@@ -433,11 +444,12 @@ public class MSA {
      * @param onDispose The runnable called when the dialog is disposed (closed).
      */
     public static JFrame showDialog(String title, String message, Runnable onDispose) {
-        try {
-            UIManager.setLookAndFeel(UIManager.getSystemLookAndFeelClassName());
-        } catch (ClassNotFoundException | InstantiationException | IllegalAccessException | UnsupportedLookAndFeelException e) {
-            LOG.error("Could not set system look and feel.", e);
-        }
+		if (!MinecraftClient.IS_SYSTEM_MAC) // Calls to setLookAndFeel on Mac appear to freeze the game.
+			try {
+				UIManager.setLookAndFeel(UIManager.getSystemLookAndFeelClassName());
+			} catch (ClassNotFoundException | InstantiationException | IllegalAccessException | UnsupportedLookAndFeelException e) {
+				LOG.error("Could not set system look and feel.", e);
+			}
 
         JFrame frame = new JFrame(title);
         frame.setLayout(new GridBagLayout());
