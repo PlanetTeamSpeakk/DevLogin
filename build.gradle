@@ -87,17 +87,19 @@ publishing {
 
 	repositories {
 		maven {
+			name "MavenCentral"
 			url "https://oss.sonatype.org/service/local/staging/deploy/maven2/"
 			credentials {
-				username project.ossrhUsername
-				password project.ossrhPassword
+				username ossrhUsername
+				password ossrhPassword
 			}
 		}
 		maven {
-			url "${project.ghUrlRoot}/DevLogin"
+			name "GithubPackages"
+			url ghUrlRoot + "/DevLogin"
 			credentials {
-				username project.ghUsername
-				password project.ghToken
+				username ghUsername
+				password ghToken
 			}
 		}
 	}
