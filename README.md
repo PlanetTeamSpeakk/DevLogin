@@ -5,7 +5,7 @@ This works on all Minecraft versions supported by Fabric, ranging from 1.14 to t
 ## Usage
 To use this mod, add 
 ```gradle
-modImplementation "com.ptsmods:devlogin:2.1"
+modImplementation "com.ptsmods:devlogin:3.0"
 ```
 to your dependencies in your build.gradle file.  
 
