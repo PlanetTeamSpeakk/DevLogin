@@ -50,11 +50,12 @@ public class MSA {
      * Takes all the necessary steps to get a Minecraft token from a Microsoft account.
      * @param proxy The proxy to route requests through.
      * @param storeRefreshToken Whether the refresh token should be stored for later use.
+     * @param noDialog Whether to print the code to the console or show a dialog
      * @throws IOException If anything goes wrong with the requests.
      * @throws InterruptedException If the thread gets interrupted while waiting.
      */
     public static void login(Proxy proxy, boolean storeRefreshToken, boolean noDialog) throws IOException, InterruptedException {
-        System.setProperty("java.awt.headless", "false"); // Can't display dialogs otherwise.
+        if (!noDialog) System.setProperty("java.awt.headless", "false"); // Can't display dialogs otherwise.
         MSA.proxy = proxy;
 
         if (tokenFile.exists()) {
