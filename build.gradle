@@ -122,22 +122,22 @@ publishing {
 
     repositories {
         mavenLocal()
-//        maven {
-//            name "MavenCentral"
-//            url "https://oss.sonatype.org/service/local/staging/deploy/maven2/"
-//            credentials {
-//                username ossrhUsername
-//                password ossrhPassword
-//            }
-//        }
-//        maven {
-//            name "GithubPackages"
-//            url ghUrlRoot + "/DevLogin"
-//            credentials {
-//                username ghUsername
-//                password ghToken
-//            }
-//        }
+        maven {
+            name "MavenCentral"
+            url "https://oss.sonatype.org/service/local/staging/deploy/maven2/"
+            credentials {
+                username ossrhUsername
+                password ossrhPassword
+            }
+        }
+        maven {
+            name "GithubPackages"
+            url ghUrlRoot + "/DevLogin"
+            credentials {
+                username ghUsername
+                password ghToken
+            }
+        }
     }
 }
 
