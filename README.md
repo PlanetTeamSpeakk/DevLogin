@@ -5,9 +5,16 @@ Login with your own Minecraft account in a mod development environment.
 ## Usage
 To use this mod, add 
 ```gradle
-modImplementation "com.ptsmods:devlogin:3.1"
+repositories {
+  mavenCentral()
+}
+
+dependencies {
+  modImplementation "com.ptsmods:devlogin:3.1" // For Fabric and Quilt
+  implementation fg.deobf("com.ptsmods:devlogin:3.1") // For Forge
+}
 ```
-to your dependencies in your build.gradle file.  
+to your build.gradle file.  
 
 After that, the procedure differs for different account types. You have the following options:
 1. [Mojang account](#mojang-account)
