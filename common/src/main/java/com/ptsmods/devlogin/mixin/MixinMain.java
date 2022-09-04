@@ -16,7 +16,7 @@ public class MixinMain {
      * @param args The args to modify
      * @return Modified version of the passed args
      */
-    @ModifyVariable(at = @At("LOAD"), method = "main([Ljava/lang/String;)V", argsOnly = true)
+    @ModifyVariable(at = @At("LOAD"), method = "main([Ljava/lang/String;)V", argsOnly = true, remap = false)
     private static String[] modifyArgs(String[] args) {
         return DevLogin.modifyArgs(args);
     }

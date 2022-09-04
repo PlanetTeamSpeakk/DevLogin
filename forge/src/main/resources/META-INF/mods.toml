@@ -1,0 +1,28 @@
+modLoader = "javafml"
+loaderVersion = "[1,)"
+issueTrackerURL = "https://github.com/PlanetTeamSpeakk/DevLogin/issues"
+license = "MIT"
+
+[[mods]]
+modId = "devlogin"
+version = "${version}"
+displayName = "DevLogin"
+authors = "PlanetTeamSpeak"
+description = '''
+A simple mod that allows developers to login with their own Minecraft account in a mod development environment.
+'''
+displayURL = "https://github.com/PlanetTeamSpeakk/DevLogin"
+
+[[dependencies.devlogin]]
+modId = "forge"
+mandatory = true
+versionRange = "[1,)"
+ordering = "NONE"
+side = "BOTH"
+
+[[dependencies.devlogin]]
+modId = "minecraft"
+mandatory = true
+versionRange = "[1.0,)"
+ordering = "NONE"
+side = "BOTH"

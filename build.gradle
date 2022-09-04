@@ -1,108 +1,121 @@
 plugins {
-	id 'fabric-loom' version '1.0-SNAPSHOT'
-	id 'maven-publish'
-	id 'signing'
+    id "architectury-plugin" version "3.4-SNAPSHOT"
+    id "dev.architectury.loom" version "0.12.0-SNAPSHOT" apply false
+    id "io.github.pacifistmc.forgix" version "1.2.6"
+    id "maven-publish"
+    id "signing"
 }
 
-sourceCompatibility = JavaVersion.VERSION_1_8
-targetCompatibility = JavaVersion.VERSION_1_8
-
-archivesBaseName = project.archives_base_name
-version = project.mod_version
-group = project.maven_group
-
-dependencies {
-	minecraft "com.mojang:minecraft:${project.minecraft_version}"
-	mappings "net.fabricmc:yarn:${project.yarn_mappings}:v2"
-	modImplementation "net.fabricmc:fabric-loader:${project.loader_version}"
+architectury {
+    minecraft = rootProject.minecraft_version
 }
 
-processResources {
-	inputs.property "version", project.version
+subprojects {
+    apply plugin: "dev.architectury.loom"
 
-	filesMatching("fabric.mod.json") {
-		expand "version": project.version
-	}
+    loom {
+        silentMojangMappingsLicense()
+    }
+
+    dependencies {
+        minecraft "com.mojang:minecraft:${rootProject.minecraft_version}"
+        mappings loom.officialMojangMappings()
+    }
 }
 
-tasks.withType(JavaCompile).configureEach {
-	it.options.encoding = "UTF-8"
+allprojects {
+    apply plugin: "java"
+    apply plugin: "architectury-plugin"
+
+    archivesBaseName = rootProject.archives_base_name
+    version = rootProject.mod_version
+    group = rootProject.maven_group
+
+    tasks.withType(JavaCompile) {
+        options.encoding = "UTF-8"
+        options.release = 8
+    }
+
+    java {
+        withSourcesJar()
+        withJavadocJar()
+    }
 }
 
-java {
-	withSourcesJar()
-	withJavadocJar()
+forgix {
+    group = "com.ptsmods.devlogin"
+    mergedJarName = "DevLogin-${version}.jar"
+    outputDir = "build/libs"
 }
 
-// configure the maven publication
+def mergedJarFile = layout.buildDirectory.file("libs/DevLogin-${version}.jar")
+def mergedJarArtifact = artifacts.add("archives", mergedJarFile.get().asFile)
+def commonJavadocFile = project(":common").layout.buildDirectory.file("libs/DevLogin-${version}-javadoc.jar")
+def commonJavadocArtifact = artifacts.add("archives", commonJavadocFile.get().asFile)
+def commonSourcesFile = project(":common").layout.buildDirectory.file("libs/DevLogin-${version}-sources.jar")
+def commonSourcesArtifact = artifacts.add("archives", commonSourcesFile.get().asFile)
+
 publishing {
-	publications {
-		mavenJava(MavenPublication) {
-			pom {
-				name = 'DevLogin'
-				artifactId = 'devlogin'
-				description = 'Login with your own Minecraft account in a Fabric mod development environment.'
-				url = 'https://github.com/PlanetTeamSpeakk/DevLogin'
-				licenses {
-					license {
-						name = 'MIT License'
-						url = 'https://raw.githubusercontent.com/PlanetTeamSpeakk/DevLogin/main/LICENSE'
-					}
-				}
-				developers {
-					developer {
-						id = 'PlanetTeamSpeak'
-						name = 'PlanetTeamSpeak'
-						email = 'PlanetTeamSpeakk@users.noreply.github.com'
-					}
-				}
-				scm {
-					connection = 'scm:git:https://github.com/PlanetTeamSpeakk/DevLogin.git'
-					developerConnection = 'scm:git:git@github.com:PlanetTeamSpeakk/DevLogin.git'
-					url = 'https://github.com/PlanetTeamSpeakk/DevLogin'
-				}
-				issueManagement {
-					system = "GitHub"
-					url = "https://github.com/PlanetTeamSpeakk/DevLogin/issues"
-				}
-			}
-			// add all the jars that should be included when publishing to maven
-			artifact(javadocJar) {
-				builtBy javadocJar
-			}
-			artifact(jar) {
-				builtBy jar
-			}
-			artifact(remapJar) {
-				builtBy remapJar
-			}
-			artifact(sourcesJar) {
-				builtBy remapSourcesJar
-			}
-		}
-	}
+    publications {
+        mavenJava(MavenPublication) {
+            pom {
+                name = 'DevLogin'
+                artifactId = 'devlogin'
+                description = 'Login with your own Minecraft account in a mod development environment.'
+                url = 'https://github.com/PlanetTeamSpeakk/DevLogin'
+                licenses {
+                    license {
+                        name = 'MIT License'
+                        url = 'https://raw.githubusercontent.com/PlanetTeamSpeakk/DevLogin/main/LICENSE'
+                    }
+                }
+                developers {
+                    developer {
+                        id = 'PlanetTeamSpeak'
+                        name = 'PlanetTeamSpeak'
+                        email = 'PlanetTeamSpeakk@users.noreply.github.com'
+                    }
+                }
+                scm {
+                    connection = 'scm:git:https://github.com/PlanetTeamSpeakk/DevLogin.git'
+                    developerConnection = 'scm:git:git@github.com:PlanetTeamSpeakk/DevLogin.git'
+                    url = 'https://github.com/PlanetTeamSpeakk/DevLogin'
+                }
+                issueManagement {
+                    system = "GitHub"
+                    url = "https://github.com/PlanetTeamSpeakk/DevLogin/issues"
+                }
+            }
+            // add all the jars that should be included when publishing to maven
+            artifact mergedJarArtifact
+            artifact commonJavadocArtifact
+            artifact commonSourcesArtifact
+        }
+    }
 
-	repositories {
-		mavenLocal()
-		maven {
-			name "MavenCentral"
-			url "https://oss.sonatype.org/service/local/staging/deploy/maven2/"
-			credentials {
-				username ossrhUsername
-				password ossrhPassword
-			}
-		}
-		maven {
-			name "GithubPackages"
-			url ghUrlRoot + "/DevLogin"
-			credentials {
-				username ghUsername
-				password ghToken
-			}
-		}
-	}
+    repositories {
+        mavenLocal()
+        maven {
+            name "MavenCentral"
+            url "https://oss.sonatype.org/service/local/staging/deploy/maven2/"
+            credentials {
+                username ossrhUsername
+                password ossrhPassword
+            }
+        }
+        maven {
+            name "GithubPackages"
+            url ghUrlRoot + "/DevLogin"
+            credentials {
+                username ghUsername
+                password ghToken
+            }
+        }
+    }
 }
+
+tasks.publish.dependsOn(mergeJars)
 
 signing {
-	sign publishing.publications.mavenJava
+    sign publishing.publications.mavenJava
 }

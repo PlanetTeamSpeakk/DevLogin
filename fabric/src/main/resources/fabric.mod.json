@@ -3,13 +3,12 @@
   "id": "devlogin",
   "version": "${version}",
   "name": "DevLogin",
-  "description": "A simple mod that allows developers to login with their own Minecraft account in a Fabric mod development environment.",
+  "description": "A simple mod that allows developers to login with their own Minecraft account in a mod development environment.",
   "authors": [
     "PlanetTeamSpeak"
   ],
   "contact": {
-    "homepage": "https://fabricmc.net/",
-    "sources": "https://github.com/FabricMC/fabric-example-mod"
+    "sources": "https://github.com/PlanetTeamSpeakk/DevLogin"
   },
   "license": "MIT",
   "environment": "client",

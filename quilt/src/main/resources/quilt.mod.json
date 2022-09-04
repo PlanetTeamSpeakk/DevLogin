@@ -1,0 +1,32 @@
+{
+  "schema_version": 1,
+  "mixin": [
+    "devlogin.mixins.json"
+  ],
+  "quilt_loader": {
+    "group": "${group}",
+    "id": "devlogin",
+    "version": "${version}",
+    "name": "DevLogin",
+    "description": "A simple mod that allows developers to login with their own Minecraft account in a mod development environment.",
+    "authors": [
+      "PlanetTeamSpeak"
+    ],
+    "contact": {
+      "sources": "https://github.com/PlanetTeamSpeakk/DevLogin"
+    },
+    "license": "MIT",
+    "intermediate_mappings": "net.fabricmc:intermediary",
+    "environment": "client",
+    "depends": [
+      {
+        "id": "quilt_loader",
+        "version": "*"
+      },
+      {
+        "id": "minecraft",
+        "version": "*"
+      }
+    ]
+  }
+}

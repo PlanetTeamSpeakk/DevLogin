@@ -7,7 +7,6 @@ import com.mojang.authlib.exceptions.AuthenticationException;
 import com.mojang.authlib.yggdrasil.YggdrasilAuthenticationService;
 import com.mojang.util.UUIDTypeAdapter;
 import joptsimple.*;
-import net.minecraft.client.util.Session;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -153,8 +152,9 @@ public class DevLogin {
             return null;
         }
 
+        LOG.info("Logged in as " + auth.getSelectedProfile().getName() + " using a Mojang account.");
         return new AuthenticationProfile(auth.getSelectedProfile().getName(), auth.getSelectedProfile().getId(), auth.getAuthenticatedToken(),
-                Session.AccountType.byName(auth.getUserType().getName()), null);
+                AuthenticationProfile.Type.valueOf(auth.getUserType().getName().toUpperCase(Locale.ROOT)), null);
     }
 
     /**
@@ -184,7 +184,8 @@ public class DevLogin {
             }
 
             MSA.MinecraftProfile profile = MSA.getProfile();
-            return new AuthenticationProfile(profile.getName(), profile.getUuid(), profile.getToken(), Session.AccountType.MSA, null);
+            LOG.info("Logged in as " + profile.getName() + " using a Microsoft account.");
+            return new AuthenticationProfile(profile.getName(), profile.getUuid(), profile.getToken(), AuthenticationProfile.Type.MSA, null);
         } finally {
             MSA.cleanup();
         }
