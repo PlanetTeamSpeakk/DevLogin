@@ -42,6 +42,33 @@ allprojects {
     }
 }
 
+sourcesJar {
+    def commonSources = project(":common").sourcesJar
+    def fabricSources = project(":fabric").sourcesJar
+    def forgeSources = project(":forge").sourcesJar
+    def quiltSources = project(":quilt").sourcesJar
+
+    dependsOn commonSources
+    dependsOn fabricSources
+    dependsOn forgeSources
+    dependsOn quiltSources
+
+    from commonSources.archiveFile.map { zipTree(it) }
+    from fabricSources.archiveFile.map { zipTree(it) }
+    from forgeSources.archiveFile.map { zipTree(it) }
+    from quiltSources.archiveFile.map { zipTree(it) }
+}
+
+def exportedProjects = [":", ":common", ":fabric", ":forge", ":quilt"]
+task allJavadoc(type: Javadoc) {
+    source exportedProjects.collect { project(it).sourceSets.main.allJava }
+    classpath = files(exportedProjects.collect { project(it).sourceSets.main.compileClasspath })
+}
+
+javadocJar {
+    from allJavadoc
+}
+
 forgix {
     group = "com.ptsmods.devlogin"
     mergedJarName = "DevLogin-${version}.jar"
@@ -50,10 +77,6 @@ forgix {
 
 def mergedJarFile = layout.buildDirectory.file("libs/DevLogin-${version}.jar")
 def mergedJarArtifact = artifacts.add("archives", mergedJarFile.get().asFile)
-def commonJavadocFile = project(":common").layout.buildDirectory.file("libs/DevLogin-${version}-javadoc.jar")
-def commonJavadocArtifact = artifacts.add("archives", commonJavadocFile.get().asFile)
-def commonSourcesFile = project(":common").layout.buildDirectory.file("libs/DevLogin-${version}-sources.jar")
-def commonSourcesArtifact = artifacts.add("archives", commonSourcesFile.get().asFile)
 
 publishing {
     publications {
@@ -88,29 +111,33 @@ publishing {
             }
             // add all the jars that should be included when publishing to maven
             artifact mergedJarArtifact
-            artifact commonJavadocArtifact
-            artifact commonSourcesArtifact
+            artifact(javadocJar) {
+                builtBy javadocJar
+            }
+            artifact(sourcesJar) {
+                builtBy sourcesJar
+            }
         }
     }
 
     repositories {
         mavenLocal()
-        maven {
-            name "MavenCentral"
-            url "https://oss.sonatype.org/service/local/staging/deploy/maven2/"
-            credentials {
-                username ossrhUsername
-                password ossrhPassword
-            }
-        }
-        maven {
-            name "GithubPackages"
-            url ghUrlRoot + "/DevLogin"
-            credentials {
-                username ghUsername
-                password ghToken
-            }
-        }
+//        maven {
+//            name "MavenCentral"
+//            url "https://oss.sonatype.org/service/local/staging/deploy/maven2/"
+//            credentials {
+//                username ossrhUsername
+//                password ossrhPassword
+//            }
+//        }
+//        maven {
+//            name "GithubPackages"
+//            url ghUrlRoot + "/DevLogin"
+//            credentials {
+//                username ghUsername
+//                password ghToken
+//            }
+//        }
     }
 }
 
