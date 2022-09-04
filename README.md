@@ -1,11 +1,11 @@
 # DevLogin
-Login with your own Minecraft account in a Fabric mod development environment.  
-This works on all Minecraft versions supported by Fabric, ranging from 1.14 to the latest snapshot.
+Login with your own Minecraft account in a mod development environment.  
+**This works on all Minecraft versions with any mod loader.**
 
 ## Usage
 To use this mod, add 
 ```gradle
-modImplementation "com.ptsmods:devlogin:3.0"
+modImplementation "com.ptsmods:devlogin:3.1"
 ```
 to your dependencies in your build.gradle file.  
 
@@ -32,7 +32,7 @@ The `--username` and `--password` program arguments always take higher priority 
 ### Microsoft account
 If you have Migrated your Minecraft account to a Microsoft account, you can still use this mod just fine. The procedure is just a little more complicated.  
 
-1. Add either the `--msa` or `--msa-nostore` program argument to your run configuration and launch the configuration. Use `--msa-nostore` to prevent DevLogin from storing your refresh token which can be used indefinitely (I think, it doesn't seem to have an expiry) to get new Minecraft tokens.
+1. Add either the `--msa` or `--msa-nostore` program argument to your run configuration and launch the configuration. Use `--msa-nostore` to prevent DevLogin from storing your refresh token which can be used indefinitely to get new Minecraft tokens.
 2. In a moment, you should see a dialog asking you to fill in a code on a website. Follow these instructions.
 3. The dialog should disappear and Minecraft should start a moment later, logged in on your Minecraft account. This dialog can be disabled, however, by passing the `--msa-no-dialog` program argument. In this case the code is printed to the console which may be desired if you have issues with the dialog.
 4. That's it, if the Minecraft token expires, a new one will be obtained using the refresh token unless `--msa-nostore` was passed instead of `--msa` in which case you'll have to redo this procedure.
