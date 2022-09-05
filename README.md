@@ -1,6 +1,6 @@
 # DevLogin
 Login with your own Minecraft account in a mod development environment.  
-**This works on all Minecraft versions with any mod loader.**
+**This works on all Minecraft versions with any mod loader.** (In case of Forge, only on versions supporting Mixins: 1.15.2+)
 
 ## Usage
 To use this mod, add 
