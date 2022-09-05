@@ -30,16 +30,19 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.BiConsumer;
 import java.util.function.Consumer;
+import java.util.regex.Pattern;
 
 // Thanks to https://wiki.vg/Microsoft_Authentication_Scheme, Microsoft Docs and
 // https://github.com/MultiMC/Launcher/blob/develop/launcher/minecraft/auth/flows/AuthContext.cpp for this
 public class MSA {
     private static final Logger LOG = LogManager.getLogger("DevLogin-MSA");
     private static final ThreadPoolExecutor TPE = new ThreadPoolExecutor(1, 4, 300, TimeUnit.SECONDS, new SynchronousQueue<>());
+    private static final Pattern urlPattern = Pattern.compile("<a href=\"(.*?)\">.*?</a>"), tagPattern = Pattern.compile("<([A-Za-z]*?).*?>(.*?)</\\1>");
     private static final File tokenFile = new File("DevLoginCache.json");
     private static final String CLIENT_ID = "bfcbedc1-f14e-441f-a136-15aec874e6c2"; // DevLogin Azure application client id
     private static final Object waitLock = new Object();
     private static Proxy proxy = Proxy.NO_PROXY;
+    private static boolean noDialog = false;
     private static JFrame mainDialog;
     private static String deviceCode; // Strings sorted by steps they're acquired in.
     private static String accessToken, refreshToken;
@@ -60,6 +63,7 @@ public class MSA {
     public static void login(Proxy proxy, boolean storeRefreshToken, boolean noDialog) throws IOException, InterruptedException {
         if (!noDialog) System.setProperty("java.awt.headless", "false"); // Can't display dialogs otherwise.
         MSA.proxy = proxy;
+        MSA.noDialog = noDialog;
 
         if (tokenFile.exists()) {
             Map<String, String> data = MoreObjects.firstNonNull(readData(), Collections.emptyMap());
@@ -76,14 +80,14 @@ public class MSA {
                 refreshToken(b -> {
                     if (!b)
                         try {
-                            reqTokens(noDialog);
+                            reqTokens();
                         } catch (IOException ignored) {}
                 });
             } else {
                 LOG.info("Cached token is invalid.");
-                reqTokens(noDialog);
+                reqTokens();
             }
-        } else reqTokens(noDialog);
+        } else reqTokens();
 
         synchronized (waitLock) {
             waitLock.wait();
@@ -120,23 +124,19 @@ public class MSA {
      * Microsoft once the user has authenticated.
      * @throws IOException If anything goes wrong with the request.
      */
-    private static void reqTokens(boolean noDialog) throws IOException {
+    private static void reqTokens() throws IOException {
         doRequest("POST", "https://login.microsoftonline.com/consumers/oauth2/v2.0/devicecode",
                 String.format("client_id=%s&scope=%s", URLEncoder.encode(CLIENT_ID, "UTF-8"), URLEncoder.encode("XboxLive.signin offline_access", "UTF-8")),
                 ImmutableMap.of("Content-Type", "application/x-www-form-urlencoded"), (con, resp) -> {
                     JsonObject respObj = new Gson().fromJson(resp, JsonObject.class);
 
                     deviceCode = respObj.get("device_code").getAsString();
-					String verificationUri = respObj.get("verification_uri").getAsString();
-					String userCode = respObj.get("user_code").getAsString();
+                    String verificationUri = respObj.get("verification_uri").getAsString();
+                    String userCode = respObj.get("user_code").getAsString();
 
-					if (!noDialog) mainDialog = showDialog("DevLogin MSA Authentication", String.format("Please visit <a href=\"%s\">%s</a> and enter the code <b>%s</b>.",
+                    mainDialog = showDialog("DevLogin MSA Authentication", String.format("Please visit <a href=\"%s\">%s</a> and enter code <b>%s</b>.",
                             verificationUri, verificationUri, userCode), () -> isCancelled = true);
-					else LOG.info(String.format(
-							"\n-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-" +
-							"\nPlease visit %s and enter code %s." +
-							"\n-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-",
-							verificationUri, userCode));
+
                     int interval = respObj.get("interval").getAsInt();
                     long expires = System.currentTimeMillis() + respObj.get("expires_in").getAsInt() * 1000L;
 
@@ -147,9 +147,9 @@ public class MSA {
                     try {
                         reqTokens(interval, expires);
                     } catch (UnsupportedEncodingException ignored) {} // Impossible at this stage.
-                }, ex -> {
-                    showDialog("DevLogin MSA Authentication - error", "Could not acquire a code to authenticate your Microsoft account with (" + ex.getClass().getSimpleName() + ").");
-                    ex.printStackTrace();
+                }, e -> {
+                    showDialog("DevLogin MSA Authentication - error", "Could not acquire a code to authenticate your Microsoft account with (" + e.getClass().getSimpleName() + ").");
+                    LOG.error("Could not acquire a code to authenticate your Microsoft account with", e);
 
                     synchronized (waitLock) {
                         waitLock.notify();
@@ -178,8 +178,8 @@ public class MSA {
                                 return;
                             } catch (InterruptedException | UnsupportedEncodingException ignored) {}
                     } else {
-						if (mainDialog != null) mainDialog.dispose();
-						else LOG.info("Authentication complete, requesting tokens...");
+                        if (mainDialog != null) mainDialog.dispose();
+                        else LOG.info("Authentication complete, requesting tokens...");
                         accessToken = resp1Obj.get("access_token").getAsString();
                         refreshToken = resp1Obj.get("refresh_token").getAsString();
                     }
@@ -187,9 +187,9 @@ public class MSA {
                     synchronized (waitLock) {
                         waitLock.notify();
                     }
-                }, (ex) -> {
-                    showDialog("DevLogin MSA Authentication - error", "Could not acquire a token to authenticate your Microsoft account with (" + ex.getClass().getSimpleName() + ").");
-                    ex.printStackTrace();
+                }, (e) -> {
+                    showDialog("DevLogin MSA Authentication - error", "Could not acquire a token to authenticate your Microsoft account with (" + e.getClass().getSimpleName() + ").");
+                    LOG.error("Could not acquire a token to authenticate your Microsoft account with", e);
 
                     synchronized (waitLock) {
                         waitLock.notify();
@@ -218,9 +218,9 @@ public class MSA {
                         waitLock.notify();
                     }
                     successConsumer.accept(true);
-                }, (ex) -> {
-                    showDialog("DevLogin MSA Authentication - error", "Could not acquire a token to authenticate your Microsoft account with (" + ex.getClass().getSimpleName() + ").");
-                    ex.printStackTrace();
+                }, (e) -> {
+                    showDialog("DevLogin MSA Authentication - error", "Could not acquire a token to authenticate your Microsoft account with (" + e.getClass().getSimpleName() + ").");
+                    LOG.error("Could not refresh token", e);
 
                     synchronized (waitLock) {
                         waitLock.notify();
@@ -257,7 +257,7 @@ public class MSA {
                     }
                 }, e -> {
                     showDialog("DevLogin MSA Authentication - error", "Could not acquire XBL token (" + e.getClass().getSimpleName() + ").");
-                    e.printStackTrace();
+                    LOG.error("Could not acquire XBL token", e);
 
                     synchronized (waitLock) {
                         waitLock.notify();
@@ -282,14 +282,22 @@ public class MSA {
         doRequest("POST", "https://xsts.auth.xboxlive.com/xsts/authorize", body, ImmutableMap.of("Content-Type", "application/json", "Accept", "application/json"),
                 (con, resp) -> {
                     JsonObject respObject = new Gson().fromJson(resp, JsonObject.class);
-                    xstsToken = respObject.get("Token").getAsString();
+                    respObject.addProperty("XErr", 2148916238L);
+                    if (respObject.has("XErr"))
+                        showDialog("DevLogin MSA Authentication - error", "Could not acquire XSTS token<br>" +
+                                "Error code: " + respObject.get("XErr") + ", message: " + respObject.get("Message") + ", redirect: " +
+                                (respObject.has("Redirect") ? "<a href=\"" + respObject.get("Redirect") + "\">" +
+                                        respObject.get("Redirect") + "</a>" : "null") + "<br>" +
+                                "Have a look <a href=\"https://wiki.vg/Microsoft_Authentication_Scheme#Authenticate_with_XSTS\">here</a> " +
+                                "for a short list of known error codes.");
+                    else xstsToken = respObject.get("Token").getAsString();
 
                     synchronized (waitLock) {
                         waitLock.notify();
                     }
                 }, e -> {
                     showDialog("DevLogin MSA Authentication - error", "Could not acquire XSTS token (" + e.getClass().getSimpleName() + ").");
-                    e.printStackTrace();
+                    LOG.error("Could not acquire XSTS token", e);
 
                     synchronized (waitLock) {
                         waitLock.notify();
@@ -302,22 +310,23 @@ public class MSA {
      */
     private static void reqMinecraftToken() {
         String body = "{\"identityToken\": \"XBL3.0 x=" + userHash + ";" + xstsToken + "\"}";
-        doRequest("POST", "https://api.minecraftservices.com/authentication/login_with_xbox", body, ImmutableMap.of("Content-Type", "application/json", "Accept", "application/json"), (con, resp) -> {
-            JsonObject respObject = new Gson().fromJson(resp, JsonObject.class);
-            if (respObject.has("error") && "UnauthorizedOperationException".equals(respObject.get("error").getAsString())) mcToken = null;
-            else mcToken = respObject.get("access_token").getAsString();
+        doRequest("POST", "https://api.minecraftservices.com/authentication/login_with_xbox", body,
+                ImmutableMap.of("Content-Type", "application/json", "Accept", "application/json"), (con, resp) -> {
+                    JsonObject respObject = new Gson().fromJson(resp, JsonObject.class);
+                    if (respObject.has("error") && "UnauthorizedOperationException".equals(respObject.get("error").getAsString())) mcToken = null;
+                    else mcToken = respObject.get("access_token").getAsString();
 
-            synchronized (waitLock) {
-                waitLock.notify();
-            }
-        }, e -> {
-            showDialog("DevLogin MSA Authentication - error", "Could not acquire Minecraft token (" + e.getClass().getSimpleName() + ").");
-            e.printStackTrace();
+                    synchronized (waitLock) {
+                        waitLock.notify();
+                    }
+                }, e -> {
+                    showDialog("DevLogin MSA Authentication - error", "Could not acquire Minecraft token (" + e.getClass().getSimpleName() + ").");
+                    LOG.error("Could not acquire Minecraft token", e);
 
-            synchronized (waitLock) {
-                waitLock.notify();
-            }
-        });
+                    synchronized (waitLock) {
+                        waitLock.notify();
+                    }
+                });
     }
 
     /**
@@ -347,13 +356,13 @@ public class MSA {
             synchronized (waitLock) {
                 waitLock.notify();
             }
-        }, Throwable::printStackTrace);
+        }, LOG::catching);
 
         synchronized (waitLock) {
             try {
                 waitLock.wait();
             } catch (InterruptedException e) {
-                e.printStackTrace();
+                LOG.catching(e);
             }
         }
 
@@ -448,12 +457,20 @@ public class MSA {
      * @param onDispose The runnable called when the dialog is disposed (closed).
      */
     public static JFrame showDialog(String title, String message, Runnable onDispose) {
-		if (!Minecraft.ON_OSX) // Calls to setLookAndFeel on Mac appear to freeze the game.
-			try {
-				UIManager.setLookAndFeel(UIManager.getSystemLookAndFeelClassName());
-			} catch (ClassNotFoundException | InstantiationException | IllegalAccessException | UnsupportedLookAndFeelException e) {
-				LOG.error("Could not set system look and feel.", e);
-			}
+        if (noDialog) {
+            LOG.info("\n-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-\n" +
+                    tagPattern.matcher(urlPattern.matcher(message).replaceAll("$1")).replaceAll("$2").replace("<br>", "\n") +
+                    "\n-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-");
+
+            return null;
+        }
+
+        if (!Minecraft.ON_OSX) // Calls to setLookAndFeel on Mac appear to freeze the game.
+            try {
+                UIManager.setLookAndFeel(UIManager.getSystemLookAndFeelClassName());
+            } catch (ClassNotFoundException | InstantiationException | IllegalAccessException | UnsupportedLookAndFeelException e) {
+                LOG.error("Could not set system look and feel.", e);
+            }
 
         JFrame frame = new JFrame(title);
         frame.setLayout(new GridBagLayout());
@@ -466,7 +483,7 @@ public class MSA {
                 try {
                     Desktop.getDesktop().browse(e.getURL().toURI());
                 } catch (IOException | URISyntaxException ex) {
-                    ex.printStackTrace();
+                    LOG.error("Error while trying to browse to " + e.getURL(), ex);
                 }
         });
         textPane.setEditable(false);
