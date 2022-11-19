@@ -282,7 +282,7 @@ public class MSA {
         doRequest("POST", "https://xsts.auth.xboxlive.com/xsts/authorize", body, ImmutableMap.of("Content-Type", "application/json", "Accept", "application/json"),
                 (con, resp) -> {
                     JsonObject respObject = new Gson().fromJson(resp, JsonObject.class);
-                    respObject.addProperty("XErr", 2148916238L);
+                    //respObject.addProperty("XErr", 2148916238L);
                     if (respObject.has("XErr"))
                         showDialog("DevLogin MSA Authentication - error", "Could not acquire XSTS token<br>" +
                                 "Error code: " + respObject.get("XErr") + ", message: " + respObject.get("Message") + ", redirect: " +
