@@ -20,6 +20,11 @@ subprojects {
     dependencies {
         minecraft "com.mojang:minecraft:${rootProject.minecraft_version}"
         mappings loom.officialMojangMappings()
+
+        // TODO: is this the right place for this?
+        // https://github.com/AsyncHttpClient/async-http-client
+        // https://mvnrepository.com/artifact/org.asynchttpclient/async-http-client
+        implementation "org.asynchttpclient:async-http-client:2.12.3"
     }
 }
 
