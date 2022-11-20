@@ -284,8 +284,10 @@ public class MSA {
      */
     public static boolean reqProfile() {
         if (profile != null) return true;
-        
+
         AtomicBoolean ownsMc = new AtomicBoolean();
+
+        //TODO: rather than request for the profile every launch, this should probably be cached as this endpoint tends to be unreliable.
 
         doRequest("GET", "https://api.minecraftservices.com/minecraft/profile", null, ImmutableMap.of("Authorization", "Bearer " + mcToken), (con, resp) -> {
             JsonObject respObj = new Gson().fromJson(resp, JsonObject.class);
@@ -349,6 +351,7 @@ public class MSA {
         AsyncHttpClient client = new DefaultAsyncHttpClient();
         LOG.info("Req: " + method + " " + urlStr);
         BoundRequestBuilder req = client.prepare(method, urlStr);
+        //TODO: this timeout seems at least somewhat reasonable.
         req.setRequestTimeout(10000);
         req.setReadTimeout(10000);
 
