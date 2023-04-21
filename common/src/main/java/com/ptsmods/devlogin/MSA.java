@@ -11,6 +11,9 @@ import it.unimi.dsi.fastutil.booleans.BooleanConsumer;
 import net.minecraft.client.Minecraft;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
+import org.asynchttpclient.*;
+import org.asynchttpclient.proxy.ProxyServer;
+import org.asynchttpclient.proxy.ProxyType;
 
 import javax.swing.*;
 import javax.swing.event.HyperlinkEvent;
@@ -24,9 +27,6 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.UUID;
-import java.util.concurrent.SynchronousQueue;
-import java.util.concurrent.ThreadPoolExecutor;
-import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.BiConsumer;
 import java.util.function.Consumer;
@@ -36,7 +36,10 @@ import java.util.regex.Pattern;
 // https://github.com/MultiMC/Launcher/blob/develop/launcher/minecraft/auth/flows/AuthContext.cpp for this
 public class MSA {
     private static final Logger LOG = LogManager.getLogger("DevLogin-MSA");
-    private static final ThreadPoolExecutor TPE = new ThreadPoolExecutor(1, 4, 300, TimeUnit.SECONDS, new SynchronousQueue<>());
+    private static final AsyncHttpClient client = new DefaultAsyncHttpClient(new DefaultAsyncHttpClientConfig.Builder()
+            .setRequestTimeout(10000)
+            .setReadTimeout(10000)
+            .build());
     private static final Pattern urlPattern = Pattern.compile("<a href=\"(.*?)\">.*?</a>"), tagPattern = Pattern.compile("<([A-Za-z]*?).*?>(.*?)</\\1>");
     private static final File tokenFile = new File("DevLoginCache.json");
     private static final String CLIENT_ID = "bfcbedc1-f14e-441f-a136-15aec874e6c2"; // DevLogin Azure application client id
@@ -287,8 +290,6 @@ public class MSA {
 
         AtomicBoolean ownsMc = new AtomicBoolean();
 
-        //TODO: rather than request for the profile every launch, this should probably be cached as this endpoint tends to be unreliable.
-
         doRequest("GET", "https://api.minecraftservices.com/minecraft/profile", null, ImmutableMap.of("Authorization", "Bearer " + mcToken), (con, resp) -> {
             JsonObject respObj = new Gson().fromJson(resp, JsonObject.class);
             ownsMc.set(respObj != null && !respObj.has("error"));
@@ -299,7 +300,6 @@ public class MSA {
                         UUIDTypeAdapter.fromString(respObj.get("id").getAsString()),
                         mcToken
                 );
-
         }, LOG::catching);
 
         return ownsMc.get();
@@ -348,40 +348,30 @@ public class MSA {
      * @param exceptionConsumer The consumer called when an error occurs. Gets the exception that was thrown.
      */
     public static void doRequest(String method, String urlStr, String body, Map<String, String> headers, BiConsumer<Response, String> responseConsumer, Consumer<Exception> exceptionConsumer) {
-        AsyncHttpClient client = new DefaultAsyncHttpClient();
-        LOG.info("Req: " + method + " " + urlStr);
         BoundRequestBuilder req = client.prepare(method, urlStr);
-        //TODO: this timeout seems at least somewhat reasonable.
         req.setRequestTimeout(10000);
         req.setReadTimeout(10000);
 
         if (!proxy.type().equals(Proxy.Type.DIRECT)) {
             InetSocketAddress aproxy = (InetSocketAddress) proxy.address();
-            ProxyType tproxy =
-                proxy.type().equals(Proxy.Type.SOCKS) ? ProxyType.SOCKS_V5 : ProxyType.HTTP;
-            req.setProxyServer(
-                new ProxyServer.Builder(aproxy.getHostName(), aproxy.getPort()).setProxyType(tproxy)
-            .build());
+            ProxyType tproxy = proxy.type().equals(Proxy.Type.SOCKS) ? ProxyType.SOCKS_V5 : ProxyType.HTTP;
+            req.setProxyServer(new ProxyServer.Builder(aproxy.getHostName(), aproxy.getPort())
+                    .setProxyType(tproxy)
+                    .build());
         }
 
-        if (body != null) {
-            req.setBody(body);
-        }
+        if (body != null) req.setBody(body);
 
-        if (headers != null) {
-            LOG.info("Headers: ");
-            for (Map.Entry<String, String> entry : headers.entrySet()) {
+        if (headers != null)
+            for (Map.Entry<String, String> entry : headers.entrySet())
                 req.setHeader(entry.getKey(), entry.getValue());
-                LOG.info("-> " + entry.getKey() + ":" + entry.getValue());
-            }
-        }
 
-        req.execute().toCompletableFuture().whenComplete(
-            (Response resp, Throwable exception) -> {
-                LOG.info("Resp body: " + resp.getResponseBody());
-                responseConsumer.accept(resp, resp.getResponseBody());
-            }
-        ).join();
+        // The game has to wait for us to be able to acquire a token so the fact that these
+        // requests are blocking the main thread is not a bad thing.
+        req.execute()
+                .toCompletableFuture()
+                .whenComplete((Response resp, Throwable exception) -> responseConsumer.accept(resp, resp.getResponseBody()))
+                .join();
 
         try {
             client.close();
