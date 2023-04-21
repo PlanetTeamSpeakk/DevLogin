@@ -27,6 +27,10 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.BiConsumer;
 import java.util.function.Consumer;
@@ -59,64 +63,68 @@ public class MSA {
      * @throws InterruptedException If the thread gets interrupted while waiting.
      */
     public static void login(Proxy proxy, boolean storeRefreshToken, boolean noDialog) throws IOException, InterruptedException {
-        if (!noDialog) System.setProperty("java.awt.headless", "false"); // Can't display dialogs otherwise.
+        try {
+            if (!noDialog) System.setProperty("java.awt.headless", "false"); // Can't display dialogs otherwise.
 
-        DefaultAsyncHttpClientConfig.Builder clientConfig = new DefaultAsyncHttpClientConfig.Builder()
-                .setRequestTimeout(10000)
-                .setReadTimeout(10000);
+            DefaultAsyncHttpClientConfig.Builder clientConfig = new DefaultAsyncHttpClientConfig.Builder()
+                    .setRequestTimeout(10000)
+                    .setReadTimeout(10000);
 
-        // Turn Proxy into a ProxyServer.
-        if (proxy.type() != Proxy.Type.DIRECT) {
-            InetSocketAddress aproxy = (InetSocketAddress) proxy.address();
-            ProxyType tproxy = proxy.type() == Proxy.Type.SOCKS ? ProxyType.SOCKS_V5 : ProxyType.HTTP;
-            clientConfig.setProxyServer(new ProxyServer.Builder(aproxy.getHostName(), aproxy.getPort())
-                    .setProxyType(tproxy)
-                    .build());
+            // Turn Proxy into a ProxyServer.
+            if (proxy.type() != Proxy.Type.DIRECT) {
+                InetSocketAddress aproxy = (InetSocketAddress) proxy.address();
+                ProxyType tproxy = proxy.type() == Proxy.Type.SOCKS ? ProxyType.SOCKS_V5 : ProxyType.HTTP;
+                clientConfig.setProxyServer(new ProxyServer.Builder(aproxy.getHostName(), aproxy.getPort())
+                        .setProxyType(tproxy)
+                        .build());
+            }
+
+            client = new DefaultAsyncHttpClient();
+
+            MSA.noDialog = noDialog;
+
+            if (tokenFile.exists()) {
+                Map<String, String> data = MoreObjects.firstNonNull(readData(), Collections.emptyMap());
+                refreshToken = data.get("refreshToken");
+                mcToken = data.get("mcToken");
+
+                if (reqProfile()) {
+                    LOG.info("Cached token is valid.");
+                    return;
+                }
+
+                if (refreshToken != null) {
+                    LOG.info("Cached token is invalid, requesting new one using refresh token.");
+                    refreshToken(b -> {
+                        if (!b)
+                            try {
+                                reqTokens();
+                            } catch (IOException ignored) {}
+                    });
+                } else {
+                    LOG.info("Cached token is invalid.");
+                    reqTokens();
+                }
+            } else reqTokens();
+
+
+            if (accessToken == null) return;
+
+            reqXBLToken();
+
+            if (xblToken == null) return;
+
+            reqXSTSToken();
+
+            if (xstsToken == null) return;
+
+            reqMinecraftToken();
+
+            if (mcToken == null) refreshToken = null; // It's invalid.
+            else if (reqProfile()) saveData(storeRefreshToken);
+        } finally {
+            if (client != null) client.close(); // We won't be needing it anymore.
         }
-
-        client = new DefaultAsyncHttpClient();
-
-        MSA.noDialog = noDialog;
-
-        if (tokenFile.exists()) {
-            Map<String, String> data = MoreObjects.firstNonNull(readData(), Collections.emptyMap());
-            refreshToken = data.get("refreshToken");
-            mcToken = data.get("mcToken");
-
-            if (reqProfile()) {
-                LOG.info("Cached token is valid.");
-                return;
-            }
-
-            if (refreshToken != null) {
-                LOG.info("Cached token is invalid, requesting new one using refresh token.");
-                refreshToken(b -> {
-                    if (!b)
-                        try {
-                            reqTokens();
-                        } catch (IOException ignored) {}
-                });
-            } else {
-                LOG.info("Cached token is invalid.");
-                reqTokens();
-            }
-        } else reqTokens();
-
-
-        if (accessToken == null) return;
-
-        reqXBLToken();
-
-        if (xblToken == null) return;
-
-        reqXSTSToken();
-
-        if (xstsToken == null) return;
-
-        reqMinecraftToken();
-
-        if (mcToken == null) refreshToken = null; // It's invalid.
-        else if (reqProfile()) saveData(storeRefreshToken);
     }
 
     /**
@@ -360,8 +368,6 @@ public class MSA {
      */
     public static void doRequest(String method, String urlStr, String body, Map<String, String> headers, BiConsumer<Response, String> responseConsumer, Consumer<Throwable> exceptionConsumer) {
         BoundRequestBuilder req = client.prepare(method, urlStr);
-        req.setRequestTimeout(10000);
-        req.setReadTimeout(10000);
 
         if (body != null) req.setBody(body);
 
@@ -369,17 +375,15 @@ public class MSA {
 
         // The game has to wait for us to be able to acquire a token so the fact that these
         // requests are blocking the main thread is not a bad thing.
-        req.execute()
-                .toCompletableFuture()
-                .whenComplete((resp, e) -> {
-                    if (e != null) exceptionConsumer.accept(e);
-                    else responseConsumer.accept(resp, resp.getResponseBody());
-                })
-                .join();
-
+        // However, for some reason the time it takes for the response consumer to finish consuming
+        // is also taken into account by the timeout. Since the response consumer from the reqTokens
+        // method waits for 1 second or until it times out, this can easily hit the 10-second timeout.
+        // Hence, we don't call the response consumer on the completable future.
+        CompletableFuture<Response> future = req.execute().toCompletableFuture();
         try {
-            client.close();
-        } catch (IOException e) {
+            Response resp = future.get(10, TimeUnit.SECONDS);
+            responseConsumer.accept(resp, resp.getResponseBody());
+        } catch (InterruptedException | ExecutionException | TimeoutException e) {
             exceptionConsumer.accept(e);
         }
     }
