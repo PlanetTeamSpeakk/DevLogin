@@ -40,7 +40,6 @@ public class MSA {
     private static final Pattern urlPattern = Pattern.compile("<a href=\"(.*?)\">.*?</a>"), tagPattern = Pattern.compile("<([A-Za-z]*?).*?>(.*?)</\\1>");
     private static final File tokenFile = new File("DevLoginCache.json");
     private static final String CLIENT_ID = "bfcbedc1-f14e-441f-a136-15aec874e6c2"; // DevLogin Azure application client id
-    private static final Object waitLock = new Object();
     private static Proxy proxy = Proxy.NO_PROXY;
     private static boolean noDialog = false;
     private static JFrame mainDialog;
@@ -89,30 +88,18 @@ public class MSA {
             }
         } else reqTokens();
 
-        synchronized (waitLock) {
-            waitLock.wait();
-        }
 
         if (accessToken == null) return;
 
-        synchronized (waitLock) {
-            reqXBLToken();
-            waitLock.wait();
-        }
+        reqXBLToken();
 
         if (xblToken == null) return;
 
-        synchronized (waitLock) {
-            reqXSTSToken();
-            waitLock.wait();
-        }
+        reqXSTSToken();
 
         if (xstsToken == null) return;
 
-        synchronized (waitLock) {
-            reqMinecraftToken();
-            waitLock.wait();
-        }
+        reqMinecraftToken();
 
         if (mcToken == null) refreshToken = null; // It's invalid.
         else if (reqProfile()) saveData(storeRefreshToken);
@@ -151,9 +138,6 @@ public class MSA {
                     showDialog("DevLogin MSA Authentication - error", "Could not acquire a code to authenticate your Microsoft account with (" + e.getClass().getSimpleName() + ").");
                     LOG.error("Could not acquire a code to authenticate your Microsoft account with", e);
 
-                    synchronized (waitLock) {
-                        waitLock.notify();
-                    }
                 });
     }
 
@@ -183,17 +167,9 @@ public class MSA {
                         accessToken = resp1Obj.get("access_token").getAsString();
                         refreshToken = resp1Obj.get("refresh_token").getAsString();
                     }
-
-                    synchronized (waitLock) {
-                        waitLock.notify();
-                    }
                 }, (e) -> {
                     showDialog("DevLogin MSA Authentication - error", "Could not acquire a token to authenticate your Microsoft account with (" + e.getClass().getSimpleName() + ").");
                     LOG.error("Could not acquire a token to authenticate your Microsoft account with", e);
-
-                    synchronized (waitLock) {
-                        waitLock.notify();
-                    }
                 });
     }
 
@@ -213,18 +189,10 @@ public class MSA {
                         accessToken = resp1Obj.get("access_token").getAsString();
                         MSA.refreshToken = resp1Obj.get("refresh_token").getAsString();
                     }
-
-                    synchronized (waitLock) {
-                        waitLock.notify();
-                    }
                     successConsumer.accept(true);
                 }, (e) -> {
                     showDialog("DevLogin MSA Authentication - error", "Could not acquire a token to authenticate your Microsoft account with (" + e.getClass().getSimpleName() + ").");
                     LOG.error("Could not refresh token", e);
-
-                    synchronized (waitLock) {
-                        waitLock.notify();
-                    }
                     successConsumer.accept(false);
                 });
     }
@@ -252,16 +220,10 @@ public class MSA {
                             .get(0).getAsJsonObject()
                             .get("uhs").getAsString();
 
-                    synchronized (waitLock) {
-                        waitLock.notify();
-                    }
                 }, e -> {
                     showDialog("DevLogin MSA Authentication - error", "Could not acquire XBL token (" + e.getClass().getSimpleName() + ").");
                     LOG.error("Could not acquire XBL token", e);
 
-                    synchronized (waitLock) {
-                        waitLock.notify();
-                    }
                 });
     }
 
@@ -291,17 +253,9 @@ public class MSA {
                                 "Have a look <a href=\"https://wiki.vg/Microsoft_Authentication_Scheme#Authenticate_with_XSTS\">here</a> " +
                                 "for a short list of known error codes.");
                     else xstsToken = respObject.get("Token").getAsString();
-
-                    synchronized (waitLock) {
-                        waitLock.notify();
-                    }
                 }, e -> {
                     showDialog("DevLogin MSA Authentication - error", "Could not acquire XSTS token (" + e.getClass().getSimpleName() + ").");
                     LOG.error("Could not acquire XSTS token", e);
-
-                    synchronized (waitLock) {
-                        waitLock.notify();
-                    }
                 });
     }
 
@@ -315,17 +269,9 @@ public class MSA {
                     JsonObject respObject = new Gson().fromJson(resp, JsonObject.class);
                     if (respObject.has("error") && "UnauthorizedOperationException".equals(respObject.get("error").getAsString())) mcToken = null;
                     else mcToken = respObject.get("access_token").getAsString();
-
-                    synchronized (waitLock) {
-                        waitLock.notify();
-                    }
                 }, e -> {
                     showDialog("DevLogin MSA Authentication - error", "Could not acquire Minecraft token (" + e.getClass().getSimpleName() + ").");
                     LOG.error("Could not acquire Minecraft token", e);
-
-                    synchronized (waitLock) {
-                        waitLock.notify();
-                    }
                 });
     }
 
@@ -339,8 +285,9 @@ public class MSA {
     public static boolean reqProfile() {
         if (profile != null) return true;
 
-        Object waitLock = new Object();
         AtomicBoolean ownsMc = new AtomicBoolean();
+
+        //TODO: rather than request for the profile every launch, this should probably be cached as this endpoint tends to be unreliable.
 
         doRequest("GET", "https://api.minecraftservices.com/minecraft/profile", null, ImmutableMap.of("Authorization", "Bearer " + mcToken), (con, resp) -> {
             JsonObject respObj = new Gson().fromJson(resp, JsonObject.class);
@@ -353,18 +300,7 @@ public class MSA {
                         mcToken
                 );
 
-            synchronized (waitLock) {
-                waitLock.notify();
-            }
         }, LOG::catching);
-
-        synchronized (waitLock) {
-            try {
-                waitLock.wait();
-            } catch (InterruptedException e) {
-                LOG.catching(e);
-            }
-        }
 
         return ownsMc.get();
     }
@@ -411,34 +347,47 @@ public class MSA {
      * @param responseConsumer The consumer called on a successful response. Gets the connection used and the plain-text response.
      * @param exceptionConsumer The consumer called when an error occurs. Gets the exception that was thrown.
      */
-    public static void doRequest(String method, String urlStr, String body, Map<String, String> headers, BiConsumer<HttpURLConnection, String> responseConsumer, Consumer<Exception> exceptionConsumer) {
-        TPE.execute(() -> {
-            try {
-                URL url = new URL(urlStr);
-                HttpURLConnection con = (HttpURLConnection) url.openConnection(proxy);
-                con.setRequestMethod(method);
-                if (body != null) con.setDoOutput(true);
-                if (headers != null) for (Map.Entry<String, String> entry : headers.entrySet()) con.setRequestProperty(entry.getKey(), entry.getValue());
-                if (body != null)
-                    try (BufferedWriter writer = new BufferedWriter(new OutputStreamWriter(con.getOutputStream()))) {
-                        writer.write(body);
-                    }
-                StringBuilder sb = new StringBuilder();
-                InputStream stream;
-                try {
-                    stream = con.getInputStream();
-                } catch (IOException e) {
-                    stream = con.getErrorStream();
-                }
-                try (BufferedReader reader = new BufferedReader(new InputStreamReader(stream))) {
-                    String line;
-                    while ((line = reader.readLine()) != null) sb.append(line).append('\n');
-                }
-                responseConsumer.accept(con, sb.toString());
-            } catch (IOException e) {
-                exceptionConsumer.accept(e);
+    public static void doRequest(String method, String urlStr, String body, Map<String, String> headers, BiConsumer<Response, String> responseConsumer, Consumer<Exception> exceptionConsumer) {
+        AsyncHttpClient client = new DefaultAsyncHttpClient();
+        LOG.info("Req: " + method + " " + urlStr);
+        BoundRequestBuilder req = client.prepare(method, urlStr);
+        //TODO: this timeout seems at least somewhat reasonable.
+        req.setRequestTimeout(10000);
+        req.setReadTimeout(10000);
+
+        if (!proxy.type().equals(Proxy.Type.DIRECT)) {
+            InetSocketAddress aproxy = (InetSocketAddress) proxy.address();
+            ProxyType tproxy =
+                proxy.type().equals(Proxy.Type.SOCKS) ? ProxyType.SOCKS_V5 : ProxyType.HTTP;
+            req.setProxyServer(
+                new ProxyServer.Builder(aproxy.getHostName(), aproxy.getPort()).setProxyType(tproxy)
+            .build());
+        }
+
+        if (body != null) {
+            req.setBody(body);
+        }
+
+        if (headers != null) {
+            LOG.info("Headers: ");
+            for (Map.Entry<String, String> entry : headers.entrySet()) {
+                req.setHeader(entry.getKey(), entry.getValue());
+                LOG.info("-> " + entry.getKey() + ":" + entry.getValue());
             }
-        });
+        }
+
+        req.execute().toCompletableFuture().whenComplete(
+            (Response resp, Throwable exception) -> {
+                LOG.info("Resp body: " + resp.getResponseBody());
+                responseConsumer.accept(resp, resp.getResponseBody());
+            }
+        ).join();
+
+        try {
+            client.close();
+        } catch (IOException e) {
+            exceptionConsumer.accept(e);
+        }
     }
 
     /**
