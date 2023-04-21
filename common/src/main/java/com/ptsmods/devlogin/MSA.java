@@ -36,14 +36,10 @@ import java.util.regex.Pattern;
 // https://github.com/MultiMC/Launcher/blob/develop/launcher/minecraft/auth/flows/AuthContext.cpp for this
 public class MSA {
     private static final Logger LOG = LogManager.getLogger("DevLogin-MSA");
-    private static final AsyncHttpClient client = new DefaultAsyncHttpClient(new DefaultAsyncHttpClientConfig.Builder()
-            .setRequestTimeout(10000)
-            .setReadTimeout(10000)
-            .build());
+    private static AsyncHttpClient client;
     private static final Pattern urlPattern = Pattern.compile("<a href=\"(.*?)\">.*?</a>"), tagPattern = Pattern.compile("<([A-Za-z]*?).*?>(.*?)</\\1>");
     private static final File tokenFile = new File("DevLoginCache.json");
     private static final String CLIENT_ID = "bfcbedc1-f14e-441f-a136-15aec874e6c2"; // DevLogin Azure application client id
-    private static Proxy proxy = Proxy.NO_PROXY;
     private static boolean noDialog = false;
     private static JFrame mainDialog;
     private static String deviceCode; // Strings sorted by steps they're acquired in.
@@ -64,7 +60,22 @@ public class MSA {
      */
     public static void login(Proxy proxy, boolean storeRefreshToken, boolean noDialog) throws IOException, InterruptedException {
         if (!noDialog) System.setProperty("java.awt.headless", "false"); // Can't display dialogs otherwise.
-        MSA.proxy = proxy;
+
+        DefaultAsyncHttpClientConfig.Builder clientConfig = new DefaultAsyncHttpClientConfig.Builder()
+                .setRequestTimeout(10000)
+                .setReadTimeout(10000);
+
+        // Turn Proxy into a ProxyServer.
+        if (proxy.type() != Proxy.Type.DIRECT) {
+            InetSocketAddress aproxy = (InetSocketAddress) proxy.address();
+            ProxyType tproxy = proxy.type() == Proxy.Type.SOCKS ? ProxyType.SOCKS_V5 : ProxyType.HTTP;
+            clientConfig.setProxyServer(new ProxyServer.Builder(aproxy.getHostName(), aproxy.getPort())
+                    .setProxyType(tproxy)
+                    .build());
+        }
+
+        client = new DefaultAsyncHttpClient();
+
         MSA.noDialog = noDialog;
 
         if (tokenFile.exists()) {
@@ -347,30 +358,23 @@ public class MSA {
      * @param responseConsumer The consumer called on a successful response. Gets the connection used and the plain-text response.
      * @param exceptionConsumer The consumer called when an error occurs. Gets the exception that was thrown.
      */
-    public static void doRequest(String method, String urlStr, String body, Map<String, String> headers, BiConsumer<Response, String> responseConsumer, Consumer<Exception> exceptionConsumer) {
+    public static void doRequest(String method, String urlStr, String body, Map<String, String> headers, BiConsumer<Response, String> responseConsumer, Consumer<Throwable> exceptionConsumer) {
         BoundRequestBuilder req = client.prepare(method, urlStr);
         req.setRequestTimeout(10000);
         req.setReadTimeout(10000);
 
-        if (!proxy.type().equals(Proxy.Type.DIRECT)) {
-            InetSocketAddress aproxy = (InetSocketAddress) proxy.address();
-            ProxyType tproxy = proxy.type().equals(Proxy.Type.SOCKS) ? ProxyType.SOCKS_V5 : ProxyType.HTTP;
-            req.setProxyServer(new ProxyServer.Builder(aproxy.getHostName(), aproxy.getPort())
-                    .setProxyType(tproxy)
-                    .build());
-        }
-
         if (body != null) req.setBody(body);
 
-        if (headers != null)
-            for (Map.Entry<String, String> entry : headers.entrySet())
-                req.setHeader(entry.getKey(), entry.getValue());
+        if (headers != null) req.setSingleHeaders(headers);
 
         // The game has to wait for us to be able to acquire a token so the fact that these
         // requests are blocking the main thread is not a bad thing.
         req.execute()
                 .toCompletableFuture()
-                .whenComplete((Response resp, Throwable exception) -> responseConsumer.accept(resp, resp.getResponseBody()))
+                .whenComplete((resp, e) -> {
+                    if (e != null) exceptionConsumer.accept(e);
+                    else responseConsumer.accept(resp, resp.getResponseBody());
+                })
                 .join();
 
         try {
@@ -465,7 +469,6 @@ public class MSA {
      * Reads data that was potentially saved before.
      * @return The data that was saved before or null if an error occurs or there is no stored data.
      */
-    @SuppressWarnings("UnstableApiUsage")
     private static Map<String, String> readData() {
         try {
             return tokenFile.exists() ? new Gson().fromJson(String.join("\n", Files.readAllLines(tokenFile.toPath())), new TypeToken<Map<String, String>>() {}.getType()) : null;
