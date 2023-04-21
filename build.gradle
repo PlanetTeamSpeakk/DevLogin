@@ -111,6 +111,18 @@ publishing {
                     system = "GitHub"
                     url = "https://github.com/PlanetTeamSpeakk/DevLogin/issues"
                 }
+
+                // Because we use a custom artifact made from the merged jar file,
+                // the single dependency we have is not recognized.
+                // Hence we manually add this dependency to the dependencies of this project.
+                withXml {
+                    def depsNode = asNode().appendNode("dependencies")
+                    def depNode = depsNode.appendNode("dependency")
+
+                    depNode.appendNode("groupId", "org.asynchttpclient")
+                    depNode.appendNode("artifactId", "async-http-client")
+                    depNode.appendNode("version", "2.12.3")
+                }
             }
             // add all the jars that should be included when publishing to maven
             artifact mergedJarArtifact
