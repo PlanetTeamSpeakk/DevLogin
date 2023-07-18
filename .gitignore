@@ -17,3 +17,6 @@ classes/
 .vscode
 .settings
 *.launch
+
+# So I don't forget what account I created the DevLogin app with.
+azure-account.txt
