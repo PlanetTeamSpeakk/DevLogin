@@ -43,7 +43,7 @@ public class MSA {
     private static AsyncHttpClient client;
     private static final Pattern urlPattern = Pattern.compile("<a href=\"(.*?)\">.*?</a>"), tagPattern = Pattern.compile("<([A-Za-z]*?).*?>(.*?)</\\1>");
     private static final File tokenFile = new File("DevLoginCache.json");
-    private static final String CLIENT_ID = "bfcbedc1-f14e-441f-a136-15aec874e6c2"; // DevLogin Azure application client id
+    private static final String CLIENT_ID = "f8f49268-ae66-4638-9ba7-ab89e8e09de0"; // DevLogin Azure application client id
     private static boolean noDialog = false;
     private static JFrame mainDialog;
     private static String deviceCode; // Strings sorted by steps they're acquired in.
@@ -299,7 +299,7 @@ public class MSA {
 
     /**
      * Requests the profile from Minecraft Services using the Minecraft token.
-     * Required to login as logging in required the username and uuid of the player.
+     * Required to login as logging in requires the username and uuid of the player.
      * Also used to check if the token is valid.
      *
      * @return Whether the account associated with this token owns Minecraft.
