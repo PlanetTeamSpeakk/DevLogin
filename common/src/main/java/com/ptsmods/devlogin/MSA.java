@@ -311,7 +311,7 @@ public class MSA {
 
         doRequest("GET", "https://api.minecraftservices.com/minecraft/profile", null, ImmutableMap.of("Authorization", "Bearer " + mcToken), (con, resp) -> {
             JsonObject respObj = new Gson().fromJson(resp, JsonObject.class);
-            ownsMc.set(respObj != null && !respObj.has("error"));
+            ownsMc.set(respObj != null && !respObj.has("error") && respObj.has("name"));
 
             if (ownsMc.get() && respObj != null) // Null-check to get rid of warning.
                 profile = new MinecraftProfile(
