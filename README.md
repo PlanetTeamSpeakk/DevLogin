@@ -10,8 +10,8 @@ repositories {
 }
 
 dependencies {
-  modImplementation "com.ptsmods:devlogin:3.3.1" // For Fabric and Quilt
-  implementation fg.deobf("com.ptsmods:devlogin:3.3.1") // For Forge
+  modImplementation "com.ptsmods:devlogin:3.3.2" // For Fabric and Quilt
+  implementation fg.deobf("com.ptsmods:devlogin:3.3.2") // For Forge
 }
 ```
 to your build.gradle file.  
@@ -45,5 +45,5 @@ If you have Migrated your Minecraft account to a Microsoft account, you can stil
 4. That's it, if the Minecraft token expires, a new one will be obtained using the refresh token unless `--msa-nostore` was passed instead of `--msa` in which case you'll have to redo this procedure.
 
 ### Mimicking
-If you don't want your password or tokens stored anywhere potentionally unsafe and don't mind not being able to log onto servers or just simply wish to pretend to be some famous YouTuber or Mojang employee or whatever, you can add the `--mimicPlayer <PlayerName or UUID>` program argument instead.   
-This yields more or less the same result, mimicking just doesn't actually login so you cannot join online servers.
+If you don't want your password or tokens stored anywhere potentially unsafe and don't mind not being able to log onto servers or just simply wish to pretend to be some famous YouTuber or Mojang employee or whatever, you can add the `--mimicPlayer <PlayerName or UUID>` program argument instead.   
+This yields more or less the same result, mimicking just doesn't actually log in, so you cannot join online servers.
