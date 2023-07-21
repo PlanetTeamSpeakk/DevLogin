@@ -10,8 +10,8 @@ repositories {
 }
 
 dependencies {
-  modImplementation "com.ptsmods:devlogin:3.3" // For Fabric and Quilt
-  implementation fg.deobf("com.ptsmods:devlogin:3.3") // For Forge
+  modImplementation "com.ptsmods:devlogin:3.3.1" // For Fabric and Quilt
+  implementation fg.deobf("com.ptsmods:devlogin:3.3.1") // For Forge
 }
 ```
 to your build.gradle file.  
