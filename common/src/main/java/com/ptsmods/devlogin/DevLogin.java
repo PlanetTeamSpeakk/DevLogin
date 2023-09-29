@@ -1,11 +1,7 @@
 package com.ptsmods.devlogin;
 
 import com.google.gson.Gson;
-import com.mojang.authlib.Agent;
-import com.mojang.authlib.UserAuthentication;
-import com.mojang.authlib.exceptions.AuthenticationException;
-import com.mojang.authlib.yggdrasil.YggdrasilAuthenticationService;
-import com.mojang.util.UUIDTypeAdapter;
+import com.mojang.util.UndashedUuid;
 import joptsimple.*;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -54,11 +50,7 @@ public class DevLogin {
         // The priority is as follows: mimicking -> msa -> moj
         AuthenticationProfile profile = options.has(mimicPlayerSpec) ? mimicPlayer(proxy, options.valueOf(mimicPlayerSpec)) : // Mimic player
                 options.has("msa") || options.has("msa-nostore") ? // MSA login
-                        loginMSA(proxy, options.has("msa"), options.has("msa-no-dialog")) :
-                options.has(usernameSpec) && options.has(passwordSpec) || // Moj login
-                        env.containsKey("MinecraftUsername") && env.containsKey("MinecraftPassword") ? //
-                        loginMoj(proxy, options.has(usernameSpec) ? options.valueOf(usernameSpec) : env.get("MinecraftUsername"),
-                                options.has(passwordSpec) ? options.valueOf(passwordSpec) : env.get("MinecraftPassword")) : null;
+                        loginMSA(proxy, options.has("msa"), options.has("msa-no-dialog")) : null;
 
         Map<String, List<String>> newArgs = parseExcessArgs(options.valuesOf(nonOptionsSpec));
         if (profile != null) profile.put(newArgs);
@@ -131,33 +123,6 @@ public class DevLogin {
     }
 
     /**
-     * Try to log in using the legacy Mojang way.
-     * Probably doesn't work anymore anyway, but I'll leave it in just in case.
-     * @param proxy The proxy to use when logging in.
-     * @param username The username to log in with
-     * @param password The password to log in with
-     * @return Either an {@link AuthenticationProfile} containing the necessary args to login or
-     * {@code null} if the login was unsuccessful
-     */
-    private static AuthenticationProfile loginMoj(Proxy proxy, String username, String password) {
-        UserAuthentication auth = new YggdrasilAuthenticationService(proxy, UUID.randomUUID().toString()).createUserAuthentication(Agent.MINECRAFT);
-        auth.setUsername(username);
-        auth.setPassword(password);
-
-        try {
-            auth.logIn();
-            if (auth.getAvailableProfiles().length == 0) throw new AuthenticationException("No valid game profile was found for the given account.");
-        } catch (AuthenticationException e) {
-            LOG.error("Could not login using Mojang account.", e);
-            return null;
-        }
-
-        LOG.info("Logged in as " + auth.getSelectedProfile().getName() + " using a Mojang account.");
-        return new AuthenticationProfile(auth.getSelectedProfile().getName(), auth.getSelectedProfile().getId(), auth.getAuthenticatedToken(),
-                AuthenticationProfile.Type.valueOf(auth.getUserType().getName().toUpperCase(Locale.ROOT)), null);
-    }
-
-    /**
      * Try to log in using the modern MSA way.
      * Will open a dialog with a code used to link your Microsoft account or
      * will print it in the console if {@code noDialog} is {@code true}.
@@ -202,10 +167,10 @@ public class DevLogin {
     private static AuthenticationProfile mimicPlayer(Proxy proxy, String mimicPlayer) {
         UUID id;
         try {
-            id = UUIDTypeAdapter.fromString(mimicPlayer.replace("-", ""));
+            id = UndashedUuid.fromStringLenient(mimicPlayer.replace("-", ""));
         } catch (Exception e) {
             try {
-                id = UUIDTypeAdapter.fromString((String) new Gson().fromJson(new BufferedReader(
+                id = UndashedUuid.fromStringLenient((String) new Gson().fromJson(new BufferedReader(
                         new InputStreamReader(new URL("https://api.mojang.com/users/profiles/minecraft/" + mimicPlayer)
                                 .openConnection(proxy).getInputStream())), Map.class).get("id"));
             } catch (IOException e0) {
@@ -220,7 +185,7 @@ public class DevLogin {
         Map<?, ?> data;
         try {
             data = new Gson().fromJson(new BufferedReader(new InputStreamReader(new URL("https://sessionserver.mojang.com/session/minecraft/profile/" +
-                    UUIDTypeAdapter.fromUUID(id) + "?unsigned=false").openConnection(proxy).getInputStream())), Map.class);
+                    UndashedUuid.toString(id) + "?unsigned=false").openConnection(proxy).getInputStream())), Map.class);
         } catch (IOException e) {
             LOG.error("Could not get data of the given player.");
             return null;
