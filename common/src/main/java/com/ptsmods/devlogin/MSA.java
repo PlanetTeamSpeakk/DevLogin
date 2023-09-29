@@ -6,7 +6,7 @@ import com.google.common.reflect.TypeToken;
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 import com.google.gson.JsonObject;
-import com.mojang.util.UUIDTypeAdapter;
+import com.mojang.util.UndashedUuid;
 import it.unimi.dsi.fastutil.booleans.BooleanConsumer;
 import net.minecraft.client.Minecraft;
 import org.apache.logging.log4j.LogManager;
@@ -316,7 +316,7 @@ public class MSA {
             if (ownsMc.get() && respObj != null) // Null-check to get rid of warning.
                 profile = new MinecraftProfile(
                         respObj.get("name").getAsString(),
-                        UUIDTypeAdapter.fromString(respObj.get("id").getAsString()),
+                        UndashedUuid.fromStringLenient(respObj.get("id").getAsString()),
                         mcToken
                 );
         }, LOG::catching);
