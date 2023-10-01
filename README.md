@@ -10,31 +10,15 @@ repositories {
 }
 
 dependencies {
-  modImplementation "com.ptsmods:devlogin:3.3.2" // For Fabric and Quilt
-  implementation fg.deobf("com.ptsmods:devlogin:3.3.2") // For Forge
+  modImplementation "com.ptsmods:devlogin:3.4" // For Fabric and Quilt
+  implementation fg.deobf("com.ptsmods:devlogin:3.4") // For Forge
 }
 ```
 to your build.gradle file.  
 
 After that, the procedure differs for different account types. You have the following options:
-1. [Mojang account](#mojang-account)
-2. [Microsoft account](#microsoft-account)
-3. [Mimicking](#mimicking)
-
-### Mojang account
-If you have a plain old Mojang account, edit your run configuration in your IDE and add 
-```
---username <YourUsernameOrEmail> --password <YourPassword>
-``` 
-to the program arguments.
-
-If you don't like putting your password in such a vulnerable place, you can also set the `MinecraftUsername` and `MinecraftPassword` environment variables.  
-On Windows this can be done by doing the following:  
-1. Search `Environment variables` in the Windows search bar and click it.
-2. Click `Environment Variables...`
-3. Set the `MinecraftUsername` and `MinecraftPassword` variables either for your user or as system variables.  
-
-The `--username` and `--password` program arguments always take higher priority over the environment variables.
+1. [Microsoft account](#microsoft-account)
+2. [Mimicking](#mimicking)
 
 ### Microsoft account
 If you have Migrated your Minecraft account to a Microsoft account, you can still use this mod just fine. The procedure is just a little more complicated.  
