@@ -1,7 +1,6 @@
 package com.ptsmods.devlogin;
 
 import com.google.gson.Gson;
-import com.mojang.util.UndashedUuid;
 import joptsimple.*;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -28,8 +27,6 @@ public class DevLogin {
         OptionParser parser = new OptionParser();
         parser.allowsUnrecognizedOptions();
         NonOptionArgumentSpec<String> nonOptionsSpec = parser.nonOptions(); // Used to get any args we don't need, but were passed.
-        ArgumentAcceptingOptionSpec<String> usernameSpec = parser.accepts("username").withRequiredArg();
-        ArgumentAcceptingOptionSpec<String> passwordSpec = parser.accepts("password").withRequiredArg();
         ArgumentAcceptingOptionSpec<String> mimicPlayerSpec = parser.accepts("mimicPlayer").withRequiredArg();
         // MSA-related args don't need any values
         parser.accepts("msa");
@@ -45,9 +42,8 @@ public class DevLogin {
         OptionSet options = parser.parse(args);
         Proxy proxy = getProxy(options, proxyPortSpec);
 
-        Map<String, String> env = System.getenv();
         // Get the AuthenticationProfile that fits the arguments passed.
-        // The priority is as follows: mimicking -> msa -> moj
+        // The priority is as follows: mimicking -> msa
         AuthenticationProfile profile = options.has(mimicPlayerSpec) ? mimicPlayer(proxy, options.valueOf(mimicPlayerSpec)) : // Mimic player
                 options.has("msa") || options.has("msa-nostore") ? // MSA login
                         loginMSA(proxy, options.has("msa"), options.has("msa-no-dialog")) : null;
@@ -167,10 +163,10 @@ public class DevLogin {
     private static AuthenticationProfile mimicPlayer(Proxy proxy, String mimicPlayer) {
         UUID id;
         try {
-            id = UndashedUuid.fromStringLenient(mimicPlayer.replace("-", ""));
+            id = UndashedUuid.fromString(mimicPlayer.replace("-", ""));
         } catch (Exception e) {
             try {
-                id = UndashedUuid.fromStringLenient((String) new Gson().fromJson(new BufferedReader(
+                id = UndashedUuid.fromString((String) new Gson().fromJson(new BufferedReader(
                         new InputStreamReader(new URL("https://api.mojang.com/users/profiles/minecraft/" + mimicPlayer)
                                 .openConnection(proxy).getInputStream())), Map.class).get("id"));
             } catch (IOException e0) {
