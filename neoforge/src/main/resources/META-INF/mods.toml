@@ -1,0 +1,31 @@
+modLoader = "javafml"
+loaderVersion = "[2,)"
+issueTrackerURL = "https://github.com/PlanetTeamSpeakk/DevLogin/issues"
+license = "MIT"
+
+[[mods]]
+modId = "devlogin"
+version = "${version}"
+displayName = "DevLogin"
+authors = "PlanetTeamSpeak"
+description = '''
+A simple mod that allows developers to login with their own Minecraft account in a mod development environment.
+'''
+displayURL = "https://github.com/PlanetTeamSpeakk/DevLogin"
+
+[[dependencies.devlogin]]
+modId = "neoforge"
+type="required"
+versionRange = "[20.4,)"
+ordering = "NONE"
+side = "BOTH"
+
+[[dependencies.devlogin]]
+modId = "minecraft"
+type="required"
+versionRange = "[1.0,)"
+ordering = "NONE"
+side = "BOTH"
+
+[[mixins]]
+config = "devlogin.mixins.json"

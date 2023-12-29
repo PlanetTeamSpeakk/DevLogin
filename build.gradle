@@ -22,7 +22,7 @@ subprojects {
         mappings loom.officialMojangMappings()
 
         // https://mvnrepository.com/artifact/org.asynchttpclient/async-http-client
-        implementation "org.asynchttpclient:async-http-client:2.12.3"
+        implementation "org.asynchttpclient:async-http-client:${rootProject.async_http_version}"
     }
 }
 
@@ -76,6 +76,10 @@ forgix {
     group = "com.ptsmods.devlogin"
     mergedJarName = "DevLogin-${version}.jar"
     outputDir = "build/libs"
+
+    custom {
+        projectName = "neoforge"
+    }
 }
 
 def mergedJarFile = layout.buildDirectory.file("libs/DevLogin-${version}.jar")
