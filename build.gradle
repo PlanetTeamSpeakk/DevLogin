@@ -49,16 +49,19 @@ sourcesJar {
     def commonSources = project(":common").sourcesJar
     def fabricSources = project(":fabric").sourcesJar
     def forgeSources = project(":forge").sourcesJar
+    def neoforgeSources = project(":neoforge").sourcesJar
     def quiltSources = project(":quilt").sourcesJar
 
     dependsOn commonSources
     dependsOn fabricSources
     dependsOn forgeSources
+    dependsOn neoforgeSources
     dependsOn quiltSources
 
     from commonSources.archiveFile.map { zipTree(it) }
     from fabricSources.archiveFile.map { zipTree(it) }
     from forgeSources.archiveFile.map { zipTree(it) }
+    from neoforgeSources.archiveFile.map { zipTree(it) }
     from quiltSources.archiveFile.map { zipTree(it) }
 }
 

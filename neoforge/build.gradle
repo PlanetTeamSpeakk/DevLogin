@@ -24,6 +24,8 @@ dependencies {
 
     common(project(path: ":common", configuration: "namedElements")) { transitive false }
     shadowCommon(project(path: ":common", configuration: "transformProductionNeoForge")) { transitive = false }
+
+    implementation "org.asynchttpclient:async-http-client:${rootProject.async_http_version}"
 }
 
 tasks.withType(JavaCompile) {
