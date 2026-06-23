@@ -10,6 +10,7 @@ import org.asynchttpclient.proxy.ProxyType;
 
 import java.net.InetSocketAddress;
 import java.net.Proxy;
+import java.time.Duration;
 import java.util.Map;
 
 /**
@@ -23,8 +24,8 @@ public class AsyncHttpClientImpl implements HttpClient {
     @Override
     public String execute(String method, String url, String body, Map<String, String> headers, Proxy proxy, int timeout) throws Exception {
         DefaultAsyncHttpClientConfig.Builder config = new DefaultAsyncHttpClientConfig.Builder()
-                .setRequestTimeout(timeout)
-                .setReadTimeout(timeout);
+                .setRequestTimeout(Duration.ofMillis(timeout))
+                .setReadTimeout(Duration.ofMillis(timeout));
 
         // Turn the Proxy into a ProxyServer.
         if (proxy != null && proxy.type() != Proxy.Type.DIRECT && proxy.address() instanceof InetSocketAddress) {
