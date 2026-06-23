@@ -28,13 +28,25 @@ dependencies {
 
 tasks.withType(JavaCompile) {
     options.encoding = "UTF-8"
-    options.release = 21
+    options.release = 17
+}
+
+// The NeoForge libraries we compile against are published for Java 21, but we
+// emit Java 17 bytecode (see options.release above) so the mod also loads on
+// older, Java 17-based NeoForge versions. Setting release = 17 makes Gradle
+// request Java 17-compatible dependency variants, which the Java 21-only NeoForge
+// libraries don't provide, failing resolution. Since the build itself runs on
+// Java 21, we resolve dependencies as if running on Java 21 so their variants are
+// accepted, while javac keeps targeting release 17 above.
+def targetJvmVersion = org.gradle.api.attributes.java.TargetJvmVersion.TARGET_JVM_VERSION_ATTRIBUTE
+[configurations.compileClasspath, configurations.runtimeClasspath, configurations.developmentNeoForge].each {
+    it.attributes.attribute(targetJvmVersion, 21)
 }
 
 processResources {
     inputs.property "version", project.version
 
-    filesMatching("META-INF/mods.toml") {
+    filesMatching(["META-INF/neoforge.mods.toml", "META-INF/mods.toml"]) {
         expand "version": project.version
     }
 }

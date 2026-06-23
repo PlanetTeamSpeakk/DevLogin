@@ -6,12 +6,10 @@ import com.google.common.reflect.TypeToken;
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 import com.google.gson.JsonObject;
+import com.ptsmods.devlogin.http.HttpClients;
 import it.unimi.dsi.fastutil.booleans.BooleanConsumer;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
-import org.asynchttpclient.*;
-import org.asynchttpclient.proxy.ProxyServer;
-import org.asynchttpclient.proxy.ProxyType;
 import org.jspecify.annotations.NonNull;
 
 import javax.swing.*;
@@ -42,6 +40,7 @@ public class MSA {
     private static final File tokenFile = new File("DevLoginCache.json");
     private static final String CLIENT_ID = "f8f49268-ae66-4638-9ba7-ab89e8e09de0"; // DevLogin Azure application client id
     private static boolean noDialog = false;
+    private static Proxy proxy = Proxy.NO_PROXY;
     private static JFrame mainDialog;
     private static String deviceCode; // Strings sorted by steps they're acquired in.
     private static String accessToken, refreshToken;
@@ -61,19 +60,7 @@ public class MSA {
     public static void login(Proxy proxy, boolean storeRefreshToken, boolean noDialog) throws IOException {
         if (!noDialog) System.setProperty("java.awt.headless", "false"); // Can't display dialogs otherwise.
 
-        DefaultAsyncHttpClientConfig.Builder clientConfig = new DefaultAsyncHttpClientConfig.Builder()
-                .setRequestTimeout(10000)
-                .setReadTimeout(10000);
-
-        // Turn Proxy into a ProxyServer.
-        if (proxy.type() != Proxy.Type.DIRECT) {
-            InetSocketAddress aproxy = (InetSocketAddress) proxy.address();
-            ProxyType tproxy = proxy.type() == Proxy.Type.SOCKS ? ProxyType.SOCKS_V5 : ProxyType.HTTP;
-            clientConfig.setProxyServer(new ProxyServer.Builder(aproxy.getHostName(), aproxy.getPort())
-                    .setProxyType(tproxy)
-                    .build());
-        }
-
+        MSA.proxy = proxy;
         MSA.noDialog = noDialog;
 
         if (tokenFile.exists()) {
@@ -374,46 +361,15 @@ public class MSA {
      * @param responseConsumer The consumer called on a successful response. Gets the connection used and the plain-text response.
      * @param exceptionConsumer The consumer called when an error occurs. Gets the exception that was thrown.
      */
-    @SuppressWarnings("CharsetObjectCanBeUsed") // no (Java 8 compat)
     public static void doRequest(String method, String urlStr, String body, Map<String, String> headers, Consumer<String> responseConsumer, Consumer<Throwable> exceptionConsumer) {
         try {
             Object result = CompletableFuture.supplyAsync(() -> {
                 try {
-                    URL url = new URL(urlStr);
-                    HttpURLConnection conn = ((HttpURLConnection) url.openConnection());
-                    conn.setRequestMethod(method);
-                    if (headers != null) headers.forEach(conn::setRequestProperty);
-
-                    // Write body if there is one
-                    if (body != null) {
-                        conn.setDoOutput(true);
-                        try (BufferedOutputStream out = new BufferedOutputStream(conn.getOutputStream())) {
-                            out.write(body.getBytes("UTF-8"));
-                            out.flush();
-                        }
-                    }
-
-                    // Read response
-                    // The token request endpoint throws a 400 error,
-                    // but the response is still valid.
-                    // Not sure what's going on there.
-                    InputStream is;
-                    try {
-                        is = conn.getInputStream();
-                    } catch (IOException e) {
-                        // getErrorStream() returns null if no connection has been made yet.
-                        is = conn.getErrorStream();
-                    }
-
-                    BufferedReader in = new BufferedReader(new InputStreamReader(is));
-                    String inputLine;
-                    StringBuilder response = new StringBuilder();
-                    while ((inputLine = in.readLine()) != null)
-                        response.append(inputLine);
-                    in.close();
-
-                    return response.toString();
-                } catch (IOException e) {
+                    // HttpClients picks the first available HTTP client implementation
+                    // (async-http-client, the modern built-in client or the legacy one)
+                    // and falls back to the next when one cannot be loaded.
+                    return HttpClients.execute(method, urlStr, body, headers, proxy, 10000);
+                } catch (Throwable e) {
                     return e;
                 }
             }).exceptionally(e -> {
@@ -422,7 +378,7 @@ public class MSA {
             }).get(10, TimeUnit.SECONDS); // Timeout of 10 seconds.
 
             if (result instanceof String) responseConsumer.accept((String) result);
-            else if (result instanceof Exception) exceptionConsumer.accept((Exception) result);
+            else if (result instanceof Throwable) exceptionConsumer.accept((Throwable) result);
         } catch (InterruptedException | ExecutionException | TimeoutException e) {
             exceptionConsumer.accept(e);
         }

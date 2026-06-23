@@ -64,6 +64,8 @@ subprojects {
             archiveClassifier = "${project.name}-sources"
             from sourceSets.main.allSource
             from project(":common").sourceSets.main.allSource
+            // Resolved lazily: the 'modern' source set is created later, in common's build script.
+            from { project(":common").sourceSets.modern.allSource }
         }
 
         tasks.register("javadocJar", Jar) {

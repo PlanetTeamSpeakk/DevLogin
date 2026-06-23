@@ -2,6 +2,32 @@ architectury {
     common(rootProject.enabled_platforms.split(","))
 }
 
+sourceSets {
+    // The modern HTTP client (ModernJavaHttpClient) is built against the
+    // java.net.http API, which is only available from Java 11 onwards, whereas
+    // the rest of the mod targets Java 8. It therefore lives in its own source
+    // set so it can be compiled at a higher Java release. Its classes are bundled
+    // into the artifact and loaded by name at runtime by HttpClients, which falls
+    // back to the other implementations on JVMs that cannot load them.
+    // Sources live in the conventional location, src/modern/java.
+    modern {
+        // Needs the main classes for the HttpClient interface it implements.
+        compileClasspath += sourceSets.main.output
+    }
+}
+
 dependencies {
     modImplementation "net.fabricmc:fabric-loader:${rootProject.fabric_loader_version}"
+}
+
+// Override the project-wide 'options.release = 8' (set in the root build script)
+// for the modern source set. Compiling at release 17 means the classes only load
+// on Java 17+, which is exactly when we want this implementation to be used.
+tasks.named("compileModernJava") {
+    options.release = 17
+}
+
+// Ship the modern classes alongside the rest so the runtime fallback can find them.
+jar {
+    from sourceSets.modern.output
 }
