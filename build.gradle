@@ -109,7 +109,7 @@ publishing {
                     developer {
                         id = 'PlanetTeamSpeak'
                         name = 'PlanetTeamSpeak'
-                        email = 'PlanetTeamSpeakk@users.noreply.github.com'
+                        email = '23404706+PlanetTeamSpeakk@users.noreply.github.com'
                     }
                 }
                 scm {
@@ -131,7 +131,7 @@ publishing {
 
                     depNode.appendNode("groupId", "org.asynchttpclient")
                     depNode.appendNode("artifactId", "async-http-client")
-                    depNode.appendNode("version", "2.12.3")
+                    depNode.appendNode("version", project.async_http_version)
                 }
             }
 

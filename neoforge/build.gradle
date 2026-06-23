@@ -39,8 +39,8 @@ tasks.withType(JavaCompile) {
 // Java 21, we resolve dependencies as if running on Java 21 so their variants are
 // accepted, while javac keeps targeting release 17 above.
 def targetJvmVersion = org.gradle.api.attributes.java.TargetJvmVersion.TARGET_JVM_VERSION_ATTRIBUTE
-[configurations.compileClasspath, configurations.runtimeClasspath, configurations.developmentNeoForge].each {
-    it.attributes.attribute(targetJvmVersion, 21)
+configurations.configureEach {
+    if (canBeResolved) attributes.attribute(targetJvmVersion, 21)
 }
 
 processResources {
