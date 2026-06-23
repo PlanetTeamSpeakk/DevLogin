@@ -1,7 +1,8 @@
+import java.util.stream.Stream
+
 plugins {
-    id "architectury-plugin" version "3.4-SNAPSHOT"
-    id "dev.architectury.loom" version "1.4-SNAPSHOT" apply false
-    id "io.github.pacifistmc.forgix" version "1.2.6"
+    id "architectury-plugin" version "3.5-SNAPSHOT"
+    id "dev.architectury.loom" version "1.17-SNAPSHOT" apply false
     id "maven-publish"
     id "signing"
 }
@@ -24,13 +25,19 @@ subprojects {
         // https://mvnrepository.com/artifact/org.asynchttpclient/async-http-client
         implementation "org.asynchttpclient:async-http-client:${rootProject.async_http_version}"
     }
+
+    // Doesn't seem to work with the next subprojects block if I put this in common/build.gradle
+    if (project.name == "common")
+        java {
+            withJavadocJar()
+        }
 }
 
 allprojects {
     apply plugin: "java"
     apply plugin: "architectury-plugin"
 
-    archivesBaseName = rootProject.archives_base_name
+    base.archivesName = rootProject.archives_base_name
     version = rootProject.mod_version
     group = rootProject.maven_group
 
@@ -38,55 +45,49 @@ allprojects {
         options.encoding = "UTF-8"
         options.release = 8
     }
+}
 
-    java {
-        withSourcesJar()
-        withJavadocJar()
+// Has to be a separate block.
+// It has to be done after withSourcesJar(),
+// but the first subprojects bock needs
+// to be done before the allprojects block.
+subprojects {
+    if (project.name != "common") {
+        remapJar {
+            archiveClassifier = project.name
+        }
+
+        // SOMETHING is setting the archive classifier of sourcesJar back to 'sources'
+        // I do not know WHAT, but we just make our own instead.
+        tasks.register("sourcesJar1", Jar) {
+            dependsOn classes
+            archiveClassifier = "${project.name}-sources"
+            from sourceSets.main.allSource
+            from project(":common").sourceSets.main.allSource
+        }
+
+        tasks.register("javadocJar", Jar) {
+            archiveClassifier = "${project.name}-javadoc"
+            from zipTree(project(":common").tasks.getByName("javadocJar").archiveFile)
+        }
+
+        jar {
+            // To ensure both are built.
+            dependsOn sourcesJar1
+            dependsOn javadocJar
+        }
     }
 }
 
-sourcesJar {
-    def commonSources = project(":common").sourcesJar
-    def fabricSources = project(":fabric").sourcesJar
-    def forgeSources = project(":forge").sourcesJar
-    def neoforgeSources = project(":neoforge").sourcesJar
-    def quiltSources = project(":quilt").sourcesJar
-
-    dependsOn commonSources
-    dependsOn fabricSources
-    dependsOn forgeSources
-    dependsOn neoforgeSources
-    dependsOn quiltSources
-
-    from commonSources.archiveFile.map { zipTree(it) }
-    from fabricSources.archiveFile.map { zipTree(it) }
-    from forgeSources.archiveFile.map { zipTree(it) }
-    from neoforgeSources.archiveFile.map { zipTree(it) }
-    from quiltSources.archiveFile.map { zipTree(it) }
-}
-
-def exportedProjects = [":", ":common", ":fabric", ":forge", ":quilt"]
-task allJavadoc(type: Javadoc) {
-    source exportedProjects.collect { project(it).sourceSets.main.allJava }
-    classpath = files(exportedProjects.collect { project(it).sourceSets.main.compileClasspath })
-}
-
-javadocJar {
-    from allJavadoc
-}
-
-forgix {
-    group = "com.ptsmods.devlogin"
-    mergedJarName = "DevLogin-${version}.jar"
-    outputDir = "build/libs"
-
-    custom {
-        projectName = "neoforge"
-    }
-}
-
-def mergedJarFile = layout.buildDirectory.file("libs/DevLogin-${version}.jar")
-def mergedJarArtifact = artifacts.add("archives", mergedJarFile.get().asFile)
+// Define artifacts for each subproject.
+def atfs = subprojects.collect()
+        .stream()
+        .filter { it.name != "common" }
+        .flatMap {
+            Stream.of(it.tasks.getByName("remapJar").outputs.getFiles().getSingleFile(),
+                    it.tasks.getByName("sourcesJar1").outputs.getFiles().getSingleFile(),
+                    it.tasks.getByName("javadocJar").outputs.getFiles().getSingleFile())
+        }.map { artifacts.add("archives", it) }
 
 publishing {
     publications {
@@ -131,14 +132,24 @@ publishing {
                     depNode.appendNode("version", "2.12.3")
                 }
             }
+
             // add all the jars that should be included when publishing to maven
-            artifact mergedJarArtifact
-            artifact(javadocJar) {
-                builtBy javadocJar
-            }
-            artifact(sourcesJar) {
-                builtBy sourcesJar
-            }
+            atfs.forEach { artifact it }
+//            artifact project(":fabric").tasks.getByName("remapJar").outputs.getFiles().getSingleFile()
+//            artifact project(":fabric").tasks.getByName("sourcesJar1").outputs.getFiles().getSingleFile()
+//            artifact project(":fabric").tasks.getByName("javadocJar").outputs.getFiles().getSingleFile()
+
+//            artifact project(":quilt").tasks.getByName("remapJar").outputs.getFiles().getSingleFile()
+//            artifact project(":quilt").tasks.getByName("sourcesJar1").outputs.getFiles().getSingleFile()
+//            artifact project(":quilt").tasks.getByName("javadocJar").outputs.getFiles().getSingleFile()
+
+//            artifact project(":forge").tasks.getByName("remapJar").outputs.getFiles().getSingleFile()
+//            artifact project(":forge").tasks.getByName("sourcesJar1").outputs.getFiles().getSingleFile()
+//            artifact project(":forge").tasks.getByName("javadocJar").outputs.getFiles().getSingleFile()
+
+//            artifact project(":neoforge").tasks.getByName("remapJar").outputs.getFiles().getSingleFile()
+//            artifact project(":neoforge").tasks.getByName("sourcesJar1").outputs.getFiles().getSingleFile()
+//            artifact project(":neoforge").tasks.getByName("javadocJar").outputs.getFiles().getSingleFile()
         }
     }
 
@@ -162,8 +173,6 @@ publishing {
         }
     }
 }
-
-tasks.publish.dependsOn(mergeJars)
 
 signing {
     sign publishing.publications.mavenJava

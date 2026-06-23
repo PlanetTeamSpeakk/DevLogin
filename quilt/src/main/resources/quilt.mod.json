@@ -16,7 +16,6 @@
       "license": "MIT"
     },
     "intermediate_mappings": "net.fabricmc:intermediary",
-    "environment": "client",
     "depends": [
       {
         "id": "quilt_loader",
@@ -26,9 +25,12 @@
         "id": "minecraft",
         "version": "*"
       }
-    ],
-    "mixin": [
-      "devlogin.mixins.json"
     ]
+  },
+  "mixin": [
+    "devlogin.mixins.json"
+  ],
+  "minecraft": {
+    "environment": "client"
   }
 }

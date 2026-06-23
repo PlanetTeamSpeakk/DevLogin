@@ -7,12 +7,12 @@ import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 import com.google.gson.JsonObject;
 import it.unimi.dsi.fastutil.booleans.BooleanConsumer;
-import net.minecraft.client.Minecraft;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.asynchttpclient.*;
 import org.asynchttpclient.proxy.ProxyServer;
 import org.asynchttpclient.proxy.ProxyType;
+import org.jspecify.annotations.NonNull;
 
 import javax.swing.*;
 import javax.swing.event.HyperlinkEvent;
@@ -31,7 +31,6 @@ import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.function.BiConsumer;
 import java.util.function.Consumer;
 import java.util.regex.Pattern;
 
@@ -39,7 +38,6 @@ import java.util.regex.Pattern;
 // https://github.com/MultiMC/Launcher/blob/develop/launcher/minecraft/auth/flows/AuthContext.cpp for this
 public class MSA {
     private static final Logger LOG = LogManager.getLogger("DevLogin-MSA");
-    private static AsyncHttpClient client;
     private static final Pattern urlPattern = Pattern.compile("<a href=\"(.*?)\">.*?</a>"), tagPattern = Pattern.compile("<([A-Za-z]*?).*?>(.*?)</\\1>");
     private static final File tokenFile = new File("DevLoginCache.json");
     private static final String CLIENT_ID = "f8f49268-ae66-4638-9ba7-ab89e8e09de0"; // DevLogin Azure application client id
@@ -59,70 +57,77 @@ public class MSA {
      * @param storeRefreshToken Whether the refresh token should be stored for later use.
      * @param noDialog Whether to print the code to the console or show a dialog
      * @throws IOException If anything goes wrong with the requests.
-     * @throws InterruptedException If the thread gets interrupted while waiting.
      */
-    public static void login(Proxy proxy, boolean storeRefreshToken, boolean noDialog) throws IOException, InterruptedException {
-        try {
-            if (!noDialog) System.setProperty("java.awt.headless", "false"); // Can't display dialogs otherwise.
+    public static void login(Proxy proxy, boolean storeRefreshToken, boolean noDialog) throws IOException {
+        if (!noDialog) System.setProperty("java.awt.headless", "false"); // Can't display dialogs otherwise.
 
-            DefaultAsyncHttpClientConfig.Builder clientConfig = new DefaultAsyncHttpClientConfig.Builder()
-                    .setRequestTimeout(10000)
-                    .setReadTimeout(10000);
+        DefaultAsyncHttpClientConfig.Builder clientConfig = new DefaultAsyncHttpClientConfig.Builder()
+                .setRequestTimeout(10000)
+                .setReadTimeout(10000);
 
-            // Turn Proxy into a ProxyServer.
-            if (proxy.type() != Proxy.Type.DIRECT) {
-                InetSocketAddress aproxy = (InetSocketAddress) proxy.address();
-                ProxyType tproxy = proxy.type() == Proxy.Type.SOCKS ? ProxyType.SOCKS_V5 : ProxyType.HTTP;
-                clientConfig.setProxyServer(new ProxyServer.Builder(aproxy.getHostName(), aproxy.getPort())
-                        .setProxyType(tproxy)
-                        .build());
+        // Turn Proxy into a ProxyServer.
+        if (proxy.type() != Proxy.Type.DIRECT) {
+            InetSocketAddress aproxy = (InetSocketAddress) proxy.address();
+            ProxyType tproxy = proxy.type() == Proxy.Type.SOCKS ? ProxyType.SOCKS_V5 : ProxyType.HTTP;
+            clientConfig.setProxyServer(new ProxyServer.Builder(aproxy.getHostName(), aproxy.getPort())
+                    .setProxyType(tproxy)
+                    .build());
+        }
+
+        MSA.noDialog = noDialog;
+
+        if (tokenFile.exists()) {
+            Map<String, String> data = MoreObjects.firstNonNull(readData(), Collections.emptyMap());
+            refreshToken = data.get("refreshToken");
+            mcToken = data.get("mcToken");
+
+            if (reqProfile()) {
+                LOG.info("Cached token is valid.");
+                return;
             }
 
-            client = new DefaultAsyncHttpClient();
+            if (refreshToken != null) {
+                LOG.info("Cached token is invalid, requesting new one using refresh token.");
+                refreshToken(b -> {
+                    if (!b)
+                        try {
+                            reqTokens();
+                        } catch (IOException ignored) {}
+                });
+            } else {
+                LOG.info("Cached token is invalid.");
+                reqTokens();
+            }
+        } else reqTokens();
 
-            MSA.noDialog = noDialog;
+        reqAllTokens(storeRefreshToken, 0);
+    }
 
-            if (tokenFile.exists()) {
-                Map<String, String> data = MoreObjects.firstNonNull(readData(), Collections.emptyMap());
-                refreshToken = data.get("refreshToken");
-                mcToken = data.get("mcToken");
+    private static void reqAllTokens(boolean storeRefreshToken, int attempt) throws IOException {
+        if (attempt > 1) {
+            LOG.error("Could not acquire tokens after 2 attempts. Are you sure this account owns Minecraft?");
+            return;
+        }
 
-                if (reqProfile()) {
-                    LOG.info("Cached token is valid.");
-                    return;
-                }
+        if (accessToken == null) return;
 
-                if (refreshToken != null) {
-                    LOG.info("Cached token is invalid, requesting new one using refresh token.");
-                    refreshToken(b -> {
-                        if (!b)
-                            try {
-                                reqTokens();
-                            } catch (IOException ignored) {}
-                    });
-                } else {
-                    LOG.info("Cached token is invalid.");
-                    reqTokens();
-                }
-            } else reqTokens();
+        reqXBLToken();
 
+        if (xblToken == null) return;
 
-            if (accessToken == null) return;
+        reqXSTSToken();
 
-            reqXBLToken();
+        if (xstsToken == null) return;
 
-            if (xblToken == null) return;
+        reqMinecraftToken();
 
-            reqXSTSToken();
+        if (mcToken == null) refreshToken = null; // It's invalid.
+        else if (reqProfile()) saveData(storeRefreshToken);
 
-            if (xstsToken == null) return;
-
-            reqMinecraftToken();
-
-            if (mcToken == null) refreshToken = null; // It's invalid.
-            else if (reqProfile()) saveData(storeRefreshToken);
-        } finally {
-            if (client != null) client.close(); // We won't be needing it anymore.
+        // The tokens were invalid, so we need to start over.
+        if (refreshToken == null) {
+            reqTokens();
+            reqAllTokens(storeRefreshToken, attempt + 1);
         }
     }
 
@@ -135,7 +140,7 @@ public class MSA {
     private static void reqTokens() throws IOException {
         doRequest("POST", "https://login.microsoftonline.com/consumers/oauth2/v2.0/devicecode",
                 String.format("client_id=%s&scope=%s", URLEncoder.encode(CLIENT_ID, "UTF-8"), URLEncoder.encode("XboxLive.signin offline_access", "UTF-8")),
-                ImmutableMap.of("Content-Type", "application/x-www-form-urlencoded"), (con, resp) -> {
+                ImmutableMap.of("Content-Type", "application/x-www-form-urlencoded"), resp -> {
                     JsonObject respObj = new Gson().fromJson(resp, JsonObject.class);
 
                     deviceCode = respObj.get("device_code").getAsString();
@@ -158,7 +163,6 @@ public class MSA {
                 }, e -> {
                     showDialog("DevLogin MSA Authentication - error", "Could not acquire a code to authenticate your Microsoft account with (" + e.getClass().getSimpleName() + ").");
                     LOG.error("Could not acquire a code to authenticate your Microsoft account with", e);
-
                 });
     }
 
@@ -173,22 +177,21 @@ public class MSA {
         doRequest("POST", "https://login.microsoftonline.com/consumers/oauth2/v2.0/token",
                 String.format("grant_type=urn:ietf:params:oauth:grant-type:device_code&scope=%s&client_id=%s&device_code=%s", URLEncoder.encode("XboxLive.signin offline_access", "UTF-8"),
                         URLEncoder.encode(CLIENT_ID, "UTF-8"), URLEncoder.encode(deviceCode, "UTF-8")), ImmutableMap.of("Content-Type", "application/x-www-form-urlencoded"),
-                (con1, resp1) -> {
-                    JsonObject resp1Obj = new Gson().fromJson(resp1, JsonObject.class);
-                    if (resp1Obj.has("error")) {
-                        if ("authorization_pending".equals(resp1Obj.get("error").getAsString()) && System.currentTimeMillis() < expires && !isCancelled)
+                resp -> {
+                    JsonObject respObj = new Gson().fromJson(resp, JsonObject.class);
+                    if (respObj.has("error")) {
+                        if ("authorization_pending".equals(respObj.get("error").getAsString()) && System.currentTimeMillis() < expires && !isCancelled)
                             try {
                                 Thread.sleep(interval * 1000L);
                                 reqTokens(interval, expires);
-                                return;
                             } catch (InterruptedException | UnsupportedEncodingException ignored) {}
                     } else {
                         if (mainDialog != null) mainDialog.dispose();
                         else LOG.info("Authentication complete, requesting tokens...");
-                        accessToken = resp1Obj.get("access_token").getAsString();
-                        refreshToken = resp1Obj.get("refresh_token").getAsString();
+                        accessToken = respObj.get("access_token").getAsString();
+                        refreshToken = respObj.get("refresh_token").getAsString();
                     }
-                }, (e) -> {
+                }, e -> {
                     showDialog("DevLogin MSA Authentication - error", "Could not acquire a token to authenticate your Microsoft account with (" + e.getClass().getSimpleName() + ").");
                     LOG.error("Could not acquire a token to authenticate your Microsoft account with", e);
                 });
@@ -204,13 +207,16 @@ public class MSA {
         doRequest("POST", "https://login.microsoftonline.com/consumers/oauth2/v2.0/token",
                 String.format("grant_type=refresh_token&scope=%s&client_id=%s&refresh_token=%s", URLEncoder.encode("XboxLive.signin offline_access", "UTF-8"),
                         URLEncoder.encode(CLIENT_ID, "UTF-8"), URLEncoder.encode(refreshToken, "UTF-8")), ImmutableMap.of("Content-Type", "application/x-www-form-urlencoded"),
-                (con1, resp1) -> {
-                    JsonObject resp1Obj = new Gson().fromJson(resp1, JsonObject.class);
+                resp -> {
+                    JsonObject resp1Obj = new Gson().fromJson(resp, JsonObject.class);
                     if (!resp1Obj.has("error")) {
                         accessToken = resp1Obj.get("access_token").getAsString();
                         MSA.refreshToken = resp1Obj.get("refresh_token").getAsString();
+                        successConsumer.accept(true);
+                    } else {
+                        // Couldn't refresh token, redo sign-in.
+                        successConsumer.accept(false);
                     }
-                    successConsumer.accept(true);
                 }, (e) -> {
                     showDialog("DevLogin MSA Authentication - error", "Could not acquire a token to authenticate your Microsoft account with (" + e.getClass().getSimpleName() + ").");
                     LOG.error("Could not refresh token", e);
@@ -232,7 +238,7 @@ public class MSA {
                 "    \"TokenType\": \"JWT\"\n" +
                 " }";
         doRequest("POST", "https://user.auth.xboxlive.com/user/authenticate", body, ImmutableMap.of("Content-Type", "application/json", "Accept", "application/json"),
-                (con, resp) -> {
+                resp -> {
                     JsonObject respObj = new Gson().fromJson(resp, JsonObject.class);
                     xblToken = respObj.get("Token").getAsString();
                     userHash = respObj
@@ -263,7 +269,7 @@ public class MSA {
                 "    \"TokenType\": \"JWT\"\n" +
                 " }";
         doRequest("POST", "https://xsts.auth.xboxlive.com/xsts/authorize", body, ImmutableMap.of("Content-Type", "application/json", "Accept", "application/json"),
-                (con, resp) -> {
+                resp -> {
                     JsonObject respObject = new Gson().fromJson(resp, JsonObject.class);
                     //respObject.addProperty("XErr", 2148916238L);
                     if (respObject.has("XErr"))
@@ -286,7 +292,7 @@ public class MSA {
     private static void reqMinecraftToken() {
         String body = "{\"identityToken\": \"XBL3.0 x=" + userHash + ";" + xstsToken + "\"}";
         doRequest("POST", "https://api.minecraftservices.com/authentication/login_with_xbox", body,
-                ImmutableMap.of("Content-Type", "application/json", "Accept", "application/json"), (con, resp) -> {
+                ImmutableMap.of("Content-Type", "application/json", "Accept", "application/json"), resp -> {
                     JsonObject respObject = new Gson().fromJson(resp, JsonObject.class);
                     if (respObject.has("error") && "UnauthorizedOperationException".equals(respObject.get("error").getAsString())) mcToken = null;
                     else mcToken = respObject.get("access_token").getAsString();
@@ -308,7 +314,7 @@ public class MSA {
 
         AtomicBoolean ownsMc = new AtomicBoolean();
 
-        doRequest("GET", "https://api.minecraftservices.com/minecraft/profile", null, ImmutableMap.of("Authorization", "Bearer " + mcToken), (con, resp) -> {
+        doRequest("GET", "https://api.minecraftservices.com/minecraft/profile", null, ImmutableMap.of("Authorization", "Bearer " + mcToken), resp -> {
             JsonObject respObj = new Gson().fromJson(resp, JsonObject.class);
             ownsMc.set(respObj != null && !respObj.has("error") && respObj.has("name"));
 
@@ -318,7 +324,10 @@ public class MSA {
                         UndashedUuid.fromString(respObj.get("id").getAsString()),
                         mcToken
                 );
-        }, LOG::catching);
+        }, e -> {
+            if (e instanceof IOException && e.getMessage() != null && e.getMessage().contains("401"))
+                mcToken = refreshToken = null; // Tokens are invalid.
+        });
 
         return ownsMc.get();
     }
@@ -365,23 +374,55 @@ public class MSA {
      * @param responseConsumer The consumer called on a successful response. Gets the connection used and the plain-text response.
      * @param exceptionConsumer The consumer called when an error occurs. Gets the exception that was thrown.
      */
-    public static void doRequest(String method, String urlStr, String body, Map<String, String> headers, BiConsumer<Response, String> responseConsumer, Consumer<Throwable> exceptionConsumer) {
-        BoundRequestBuilder req = client.prepare(method, urlStr);
-
-        if (body != null) req.setBody(body);
-
-        if (headers != null) req.setSingleHeaders(headers);
-
-        // The game has to wait for us to be able to acquire a token so the fact that these
-        // requests are blocking the main thread is not a bad thing.
-        // However, for some reason the time it takes for the response consumer to finish consuming
-        // is also taken into account by the timeout. Since the response consumer from the reqTokens
-        // method waits for 1 second or until it times out, this can easily hit the 10-second timeout.
-        // Hence, we don't call the response consumer on the completable future.
-        CompletableFuture<Response> future = req.execute().toCompletableFuture();
+    @SuppressWarnings("CharsetObjectCanBeUsed") // no (Java 8 compat)
+    public static void doRequest(String method, String urlStr, String body, Map<String, String> headers, Consumer<String> responseConsumer, Consumer<Throwable> exceptionConsumer) {
         try {
-            Response resp = future.get(10, TimeUnit.SECONDS);
-            responseConsumer.accept(resp, resp.getResponseBody());
+            Object result = CompletableFuture.supplyAsync(() -> {
+                try {
+                    URL url = new URL(urlStr);
+                    HttpURLConnection conn = ((HttpURLConnection) url.openConnection());
+                    conn.setRequestMethod(method);
+                    if (headers != null) headers.forEach(conn::setRequestProperty);
+
+                    // Write body if there is one
+                    if (body != null) {
+                        conn.setDoOutput(true);
+                        try (BufferedOutputStream out = new BufferedOutputStream(conn.getOutputStream())) {
+                            out.write(body.getBytes("UTF-8"));
+                            out.flush();
+                        }
+                    }
+
+                    // Read response
+                    // The token request endpoint throws a 400 error,
+                    // but the response is still valid.
+                    // Not sure what's going on there.
+                    InputStream is;
+                    try {
+                        is = conn.getInputStream();
+                    } catch (IOException e) {
+                        // getErrorStream() returns null if no connection has been made yet.
+                        is = conn.getErrorStream();
+                    }
+
+                    BufferedReader in = new BufferedReader(new InputStreamReader(is));
+                    String inputLine;
+                    StringBuilder response = new StringBuilder();
+                    while ((inputLine = in.readLine()) != null)
+                        response.append(inputLine);
+                    in.close();
+
+                    return response.toString();
+                } catch (IOException e) {
+                    return e;
+                }
+            }).exceptionally(e -> {
+                exceptionConsumer.accept(e);
+                return e;
+            }).get(10, TimeUnit.SECONDS); // Timeout of 10 seconds.
+
+            if (result instanceof String) responseConsumer.accept((String) result);
+            else if (result instanceof Exception) exceptionConsumer.accept((Exception) result);
         } catch (InterruptedException | ExecutionException | TimeoutException e) {
             exceptionConsumer.accept(e);
         }
@@ -411,29 +452,21 @@ public class MSA {
             return null;
         }
 
-        if (!Minecraft.ON_OSX) // Calls to setLookAndFeel on Mac appear to freeze the game.
+        if (!System.getProperty("os.name").toLowerCase().contains("mac")) // Calls to setLookAndFeel on Mac appear to freeze the game.
             try {
                 UIManager.setLookAndFeel(UIManager.getSystemLookAndFeelClassName());
             } catch (ClassNotFoundException | InstantiationException | IllegalAccessException | UnsupportedLookAndFeelException e) {
                 LOG.error("Could not set system look and feel.", e);
             }
 
+        return createUI(title, message, onDispose);
+    }
+
+    private static @NonNull JFrame createUI(String title, String message, Runnable onDispose) {
         JFrame frame = new JFrame(title);
         frame.setLayout(new GridBagLayout());
 
-        JEditorPane textPane = new JEditorPane();
-        textPane.setContentType("text/html");
-        textPane.setText("<html>" + message + "</html>");
-        textPane.addHyperlinkListener(e -> {
-            if (e.getEventType() == HyperlinkEvent.EventType.ACTIVATED)
-                try {
-                    Desktop.getDesktop().browse(e.getURL().toURI());
-                } catch (IOException | URISyntaxException ex) {
-                    LOG.error("Error while trying to browse to " + e.getURL(), ex);
-                }
-        });
-        textPane.setEditable(false);
-        textPane.setOpaque(false);
+        JEditorPane textPane = createUIContent(message);
         frame.add(textPane);
 
         frame.pack();
@@ -447,8 +480,24 @@ public class MSA {
             }
         });
         frame.setVisible(true);
-
         return frame;
+    }
+
+    private static @NonNull JEditorPane createUIContent(String message) {
+        JEditorPane textPane = new JEditorPane();
+        textPane.setContentType("text/html");
+        textPane.setText("<html>" + message + "</html>");
+        textPane.addHyperlinkListener(e -> {
+            if (e.getEventType() == HyperlinkEvent.EventType.ACTIVATED)
+                try {
+                    Desktop.getDesktop().browse(e.getURL().toURI());
+                } catch (IOException | URISyntaxException ex) {
+                    LOG.error("Error while trying to browse to {}", e.getURL(), ex);
+                }
+        });
+        textPane.setEditable(false);
+        textPane.setOpaque(false);
+        return textPane;
     }
 
     /**

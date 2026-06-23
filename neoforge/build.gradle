@@ -1,5 +1,5 @@
 plugins {
-    id "com.github.johnrengelman.shadow" version "7.1.2"
+    id "com.gradleup.shadow" version "9.4.2"
 }
 
 architectury {
@@ -24,13 +24,11 @@ dependencies {
 
     common(project(path: ":common", configuration: "namedElements")) { transitive false }
     shadowCommon(project(path: ":common", configuration: "transformProductionNeoForge")) { transitive = false }
-
-    implementation "org.asynchttpclient:async-http-client:${rootProject.async_http_version}"
 }
 
 tasks.withType(JavaCompile) {
     options.encoding = "UTF-8"
-    options.release = 17
+    options.release = 21
 }
 
 processResources {
@@ -51,7 +49,6 @@ shadowJar {
 remapJar {
     inputFile.set shadowJar.archiveFile
     dependsOn shadowJar
-    archiveClassifier = null
 }
 
 jar {
