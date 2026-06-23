@@ -159,7 +159,7 @@ publishing {
         mavenLocal()
         maven {
             name "MavenCentral"
-            url "https://oss.sonatype.org/service/local/staging/deploy/maven2/"
+            url "https://ossrh-staging-api.central.sonatype.com/service/local/staging/deploy/maven2/"
             credentials {
                 username ossrhUsername
                 password ossrhPassword
@@ -178,4 +178,53 @@ publishing {
 
 signing {
     sign publishing.publications.mavenJava
+}
+
+// A plain Maven upload to the Central Portal's OSSRH Staging API leaves the
+// artifacts in an *open* staging repository that never shows up in the Portal.
+// This task performs the extra "upload to portal" step so the deployment appears
+// (validated, awaiting a manual publish) on https://central.sonatype.com.
+// publishing_type=user_managed means it is only staged, not auto-released, so the
+// final, irreversible publish stays a manual click in the Portal UI.
+def stageCentralDeployment = tasks.register("stageCentralDeployment") {
+    group = "publishing"
+    description = "Hands the uploaded OSSRH staging repository to the Central Portal as a deployment."
+
+    def centralPublishTaskName = "publishMavenJavaPublicationToMavenCentralRepository"
+    def namespace = project.group.toString()
+
+    doLast {
+        // Don't try to stage if the upload itself failed (finalizers still run otherwise).
+        def publishTask = tasks.findByName(centralPublishTaskName)
+        if (publishTask?.state?.failure != null) {
+            logger.warn("Central publish failed; skipping Central Portal staging.")
+            return
+        }
+
+        def user = findProperty("ossrhUsername")?.toString()
+        def pass = findProperty("ossrhPassword")?.toString()
+        if (!user || !pass)
+            throw new GradleException("ossrhUsername/ossrhPassword (Central Portal token) must be set to stage a deployment.")
+
+        def token = "${user}:${pass}".bytes.encodeBase64().toString()
+        def endpoint = new URL("https://ossrh-staging-api.central.sonatype.com/manual/upload/defaultRepository/${namespace}?publishing_type=user_managed")
+        def conn = (HttpURLConnection) endpoint.openConnection()
+        conn.requestMethod = "POST"
+        conn.setRequestProperty("Authorization", "Bearer ${token}")
+        conn.connectTimeout = 30_000
+        conn.readTimeout = 60_000
+
+        def code = conn.responseCode
+        if (code >= 200 && code < 300)
+            logger.lifecycle("Staged Central deployment for '${namespace}'. Review and publish it at https://central.sonatype.com/publishing/deployments")
+        else
+            throw new GradleException("Could not stage Central deployment (HTTP ${code}): ${conn.errorStream?.text}")
+    }
+}
+
+// Run the staging step automatically once the artifacts have been uploaded to
+// Maven Central. Matched lazily so it also applies if the publish task is created
+// later; only the Central repository triggers it, so GitHub Packages is unaffected.
+tasks.matching { it.name == "publishMavenJavaPublicationToMavenCentralRepository" }.configureEach {
+    finalizedBy stageCentralDeployment
 }
