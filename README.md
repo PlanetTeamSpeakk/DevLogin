@@ -10,11 +10,10 @@ repositories {
 }
 
 dependencies {
-  modImplementation "com.ptsmods:devlogin:3.5" // For Fabric and Quilt
-  implementation fg.deobf("com.ptsmods:devlogin:3.5") // For Forge
+  implementation "com.ptsmods:devlogin:3.5.1:<loader>"
 }
 ```
-to your build.gradle file.  
+to your build.gradle file. Here, `<loader>` should be replaced with your respective mod loader. Either `fabric`, `forge`, `neoforge` or `quilt`.  
 
 After that, the procedure differs for different account types. You have the following options:
 1. [Microsoft account](#microsoft-account)
